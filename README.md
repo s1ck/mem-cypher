@@ -1,0 +1,1 @@
+[![Build Status](https://travis-ci.org/s1ck/mem-cypher.svg?branch=master)](https://travis-ci.org/s1ck/mem-cypher)
