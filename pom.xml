@@ -28,55 +28,12 @@
     <plugin.maven-scalatest.version>2.0.0</plugin.maven-scalatest.version>
 
     <!-- Dependencies -->
-    <dep.logback.version>1.2.3</dep.logback.version>
-    <dep.okapi.version>1.0.0-alpha01</dep.okapi.version>
+    <dep.neo4j.version>3.4.0-alpha05</dep.neo4j.version>
+    <dep.okapi.version>1.0-SNAPSHOT</dep.okapi.version>
     <dep.scalalogging.version>3.8.0</dep.scalalogging.version>
     <dep.scalatest.version>3.0.4</dep.scalatest.version>
+    <dep.tck.version>1.0.0-M08</dep.tck.version>
   </properties>
-
-  <dependencies>
-    <!-- OKAPI relational -->
-    <dependency>
-      <groupId>org.opencypher</groupId>
-      <artifactId>okapi-relational</artifactId>
-      <version>${dep.okapi.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>com.typesafe.scala-logging</groupId>
-      <artifactId>scala-logging_${project.scala.binary.version}</artifactId>
-      <version>${dep.scalalogging.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>ch.qos.logback</groupId>
-      <artifactId>logback-classic</artifactId>
-      <version>${dep.logback.version}</version>
-      <scope>runtime</scope>
-    </dependency>
-
-    <!-- Test dependencies -->
-    <dependency>
-      <groupId>org.opencypher</groupId>
-      <artifactId>okapi-ir</artifactId>
-      <type>test-jar</type>
-      <version>${dep.okapi.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.scalatest</groupId>
-      <artifactId>scalatest_${project.scala.binary.version}</artifactId>
-      <version>${dep.scalatest.version}</version>
-      <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>org.scala-lang</groupId>
-          <artifactId>scala-library</artifactId>
-        </exclusion>
-      </exclusions>
-    </dependency>
-
-  </dependencies>
 
   <build>
     <plugins>
