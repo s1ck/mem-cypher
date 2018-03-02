@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.s1ck</groupId>
+  <artifactId>mem-cypher</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <name>InMemory Cypher</name>
+
+
+  <properties>
+    <!-- Encoding -->
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <!-- Project settings -->
+    <project.build.encoding>UTF-8</project.build.encoding>
+    <project.java.version>1.8</project.java.version>
+    <project.scala.binary.version>2.11</project.scala.binary.version>
+    <project.scala.version>${project.scala.binary.version}.12</project.scala.version>
+    <project.rootdir>${project.basedir}</project.rootdir>
+
+    <!-- Plugins -->
+    <plugin.maven-compiler.version>3.7.0</plugin.maven-compiler.version>
+    <plugin.maven-license.version>3.0</plugin.maven-license.version>
+    <plugin.maven-scala.version>3.3.1</plugin.maven-scala.version>
+    <plugin.maven-scalatest.version>2.0.0</plugin.maven-scalatest.version>
+
+    <!-- Dependencies -->
+    <dep.okapi.version>1.0.0-alpha01</dep.okapi.version>
+    <dep.scalatest.version>3.0.4</dep.scalatest.version>
+  </properties>
+
+  <build>
+    <plugins>
+      <!-- javac -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${plugin.maven-compiler.version}</version>
+        <configuration>
+          <source>${project.java.version}</source>
+          <target>${project.java.version}</target>
+        </configuration>
+      </plugin>
+
+      <!-- scalac -->
+      <plugin>
+        <groupId>net.alchim31.maven</groupId>
+        <artifactId>scala-maven-plugin</artifactId>
+        <version>${plugin.maven-scala.version}</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>compile</goal>
+              <goal>testCompile</goal>
+              <goal>add-source</goal>
+              <goal>doc-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <recompileMode>incremental</recompileMode>
+          <scalaVersion>${project.scala.version}</scalaVersion>
+          <scalaCompatVersion>${project.scala.binary.version}</scalaCompatVersion>
+          <encoding>${project.build.encoding}</encoding>
+          <args combine.children="append">
+            <!-- need to pass encoding to scalac manually -->
+            <arg>-encoding</arg>
+            <arg>${project.build.encoding}</arg>
+            <arg>-target:jvm-1.8</arg>
+            <arg>-unchecked</arg>
+            <arg>-deprecation</arg>
+            <arg>-feature</arg>
+            <arg>-Xfatal-warnings</arg>
+            <arg>-Xfuture</arg>
+            <arg>-Ywarn-adapted-args</arg>
+            <arg>-Yopt-warnings:at-inline-failed</arg>
+            <arg>-Yopt:l:project</arg>
+            <arg>-Ypartial-unification</arg>
+          </args>
+        </configuration>
+      </plugin>
+
+      <!-- scalatest -->
+      <plugin>
+        <groupId>org.scalatest</groupId>
+        <artifactId>scalatest-maven-plugin</artifactId>
+        <version>${plugin.maven-scalatest.version}</version>
+        <configuration>
+          <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
+          <junitxml>.</junitxml>
+          <filereports>WDF TestSuite.txt</filereports>
+        </configuration>
+        <executions>
+          <execution>
+            <id>test</id>
+            <goals>
+              <goal>test</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Licenses -->
+      <plugin>
+        <groupId>com.mycila</groupId>
+        <artifactId>license-maven-plugin</artifactId>
+        <version>${plugin.maven-license.version}</version>
+        <configuration>
+          <header>${project.rootdir}/build/license-header.txt</header>
+          <basedir>${basedir}/src</basedir>
+          <mapping>
+            <scala>SLASHSTAR_STYLE</scala>
+          </mapping>
+          <excludes>
+            <exclude>test/resources/**</exclude>
+            <exclude>main/resources/**</exclude>
+          </excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>check-license-headers</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+    </plugins>
+  </build>
+
+  <dependencies>
+    <!-- OKAPI relational -->
+    <dependency>
+      <groupId>org.opencypher</groupId>
+      <artifactId>okapi-relational</artifactId>
+      <version>${dep.okapi.version}</version>
+    </dependency>
+
+    <!-- Test dependencies -->
+    <dependency>
+      <groupId>org.opencypher</groupId>
+      <artifactId>okapi-ir</artifactId>
+      <type>test-jar</type>
+      <version>${dep.okapi.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.scalatest</groupId>
+      <artifactId>scalatest_${project.scala.binary.version}</artifactId>
+      <version>${dep.scalatest.version}</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.scala-lang</groupId>
+          <artifactId>scala-library</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+  </dependencies>
+</project>
