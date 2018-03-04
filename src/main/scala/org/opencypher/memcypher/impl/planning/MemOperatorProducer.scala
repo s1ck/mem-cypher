@@ -13,6 +13,8 @@
  */
 package org.opencypher.memcypher.impl.planning
 
+import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession, MemRecords}
+import org.opencypher.memcypher.impl.MemRuntimeContext
 import org.opencypher.okapi.api.graph.{PropertyGraph, QualifiedGraphName}
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
@@ -22,8 +24,6 @@ import org.opencypher.okapi.ir.api.expr.{Aggregator, Expr, Var}
 import org.opencypher.okapi.logical.impl.{ConstructedEntity, Direction, LogicalExternalGraph, LogicalGraph}
 import org.opencypher.okapi.relational.api.physical.{PhysicalOperatorProducer, PhysicalPlannerContext}
 import org.opencypher.okapi.relational.impl.table.{ProjectedExpr, ProjectedField, RecordHeader}
-import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession, MemRecords}
-import org.opencypher.memcypher.impl.MemRuntimeContext
 
 case class MemPhysicalPlannerContext(
   session: MemCypherSession,
@@ -113,7 +113,8 @@ class MemOperatorProducer(implicit caps: MemCypherSession)
     * @param header resulting record header
     * @return empty records operator
     */
-  override def planAlias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader): MemOperator = ???
+  override def planAlias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader): MemOperator =
+    Alias(in, expr, alias, header)
 
   /**
     * The operator takes a set of (field, expression) aliases and renames the columns identified by a field to the
@@ -146,7 +147,7 @@ class MemOperatorProducer(implicit caps: MemCypherSession)
     * @return select fields operator
     */
   override def planSelectFields(in: MemOperator, fields: IndexedSeq[Var], header: RecordHeader): MemOperator =
-    Select(in, fields, Set.empty, header)
+    SelectFields(in, fields, header)
 
   /**
     * Selects the specified graph from the input operator.
@@ -156,7 +157,7 @@ class MemOperatorProducer(implicit caps: MemCypherSession)
     * @return select graphs operator
     */
   override def planSelectGraphs(in: MemOperator, graphs: Set[String]): MemOperator =
-    Select(in, Seq.empty, graphs, in.header)
+    SelectGraphs(in, graphs, in.header)
 
   /**
     * Evaluates the given expression and projects it to a new column in the input records.

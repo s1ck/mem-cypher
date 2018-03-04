@@ -14,12 +14,12 @@
 package org.opencypher.memcypher.impl.planning
 
 import org.opencypher.memcypher.api.MemRecords
+import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.expr.{Expr, Var}
 import org.opencypher.okapi.logical.impl.{LogicalExternalGraph, LogicalGraph}
 import org.opencypher.okapi.relational.impl.table.{ColumnName, RecordHeader}
-import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 
 abstract class UnaryOperator extends MemOperator {
 
@@ -52,12 +52,32 @@ case class Scan(in: MemOperator, inGraph: LogicalGraph, v: Var, header: RecordHe
     assert(header == records.header)
     MemPhysicalResult(records, graphs)
   }
-
 }
 
-case class Select(in: MemOperator, fields: Seq[Var], graphs: Set[String], header: RecordHeader) extends UnaryOperator {
+case class Alias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader) extends UnaryOperator {
 
-  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = prev
+  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    println(s"Projecting $expr to alias var: $alias")
+    val data = prev.records.data
+    val newData = data.project(expr, ColumnName.of(header.slotFor(alias)))(header, context)
+    MemPhysicalResult(MemRecords.create(newData, header), prev.graphs)
+  }
+}
+
+case class SelectFields(in: MemOperator, fields: Seq[Var], header: RecordHeader) extends UnaryOperator {
+
+  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    println(s"Selecting fields: ${fields.mkString(",")}")
+    val columnNames = fields.map(header.slotFor).map(ColumnName.of)
+    val newData = prev.records.data.select(columnNames)(header, context)
+    MemPhysicalResult(MemRecords.create(newData, header), prev.graphs)
+  }
+}
+
+case class SelectGraphs(in: MemOperator, graphs: Set[String], header: RecordHeader) extends UnaryOperator {
+
+  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult =
+    prev
 }
 
 case class Project(in: MemOperator, expr: Expr, header: RecordHeader) extends UnaryOperator {
