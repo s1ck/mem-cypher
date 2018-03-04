@@ -13,6 +13,7 @@
  */
 package org.opencypher.memcypher.impl.value
 
+import com.typesafe.scalalogging.Logger
 import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherNode, CypherValue}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.PropertyKey
@@ -27,48 +28,52 @@ object CypherMapOps {
 
     def filterKeys(keys: Seq[String]): CypherMap = map.value.filterKeys(keys.contains)
 
-    def evaluate(expr: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): CypherValue = expr match {
+    def evaluate(expr: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): CypherValue = {
 
-      case Param(name) =>
-        println(s"Parameter lookup: $name in ${context.parameters}")
+      val logger = Logger("CypherMapOps#evaluate")
 
-        context.parameters(name)
+      expr match {
 
-      case Property(Var(v), PropertyKey(k)) =>
-        println(s"Property lookup: $v.$k in $map")
+        case Param(name) =>
+          logger.info(s"Parameter lookup: `$name` in ${context.parameters}")
+          context.parameters(name)
 
-        map(v) match {
-          case CypherNode(_, _, props) => props(k)
-        }
+        case Property(Var(v), PropertyKey(k)) =>
+          logger.info(s"Property lookup: `$v.$k` in $map")
+          map(v) match {
+            case CypherNode(_, _, props) => props(k)
+          }
 
-      case Equals(lhs, rhs) =>
-        println(s"Equals check: $expr in: $map")
+        case Equals(lhs, rhs) =>
+          logger.info(s"Equals: `$expr` in: $map")
 
-        evaluate(lhs) == evaluate(rhs)
+          evaluate(lhs) == evaluate(rhs)
 
-      case Not(innerExpr) =>
-        println(s"Not: $innerExpr in: $map")
-        !evaluate(innerExpr)
+        case Not(innerExpr) =>
+          logger.info(s"Not: `$innerExpr` in: $map")
+          !evaluate(innerExpr)
 
-      case Ands(exprs) =>
-        exprs.map(evaluate).reduce(_ && _)
+        case Ands(exprs) =>
+          logger.info(s"Ands: ${exprs.mkString("[", ",", "]")}")
+          exprs.map(evaluate).reduce(_ && _)
 
-      case Ors(exprs) =>
-        exprs.map(evaluate).reduce(_ || _)
+        case Ors(exprs) =>
+          logger.info(s"Ors: ${exprs.mkString("[", ",", "]")}")
+          exprs.map(evaluate).reduce(_ || _)
 
-      case GreaterThan(lhs, rhs) =>
-        println(s"GreaterThan check: $expr in: $map")
+        case GreaterThan(lhs, rhs) =>
+          logger.info(s"GreaterThan: `$expr` in: $map")
+          evaluate(lhs) > evaluate(rhs)
 
-        evaluate(lhs) > evaluate(rhs)
+        case _: TrueLit =>
+          true
 
-      case _: TrueLit =>
-        true
+        case _: FalseLit =>
+          false
 
-      case _: FalseLit =>
-        false
-
-      case _ =>
-        throw IllegalArgumentException("supported expression", expr.getClass.getSimpleName)
+        case _ =>
+          throw IllegalArgumentException("supported expression", expr.getClass.getSimpleName)
+      }
     }
   }
 

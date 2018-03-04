@@ -57,7 +57,7 @@ case class Scan(in: MemOperator, inGraph: LogicalGraph, v: Var, header: RecordHe
 case class Alias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-    println(s"Projecting $expr to alias var: $alias")
+    logger.info(s"Projecting $expr to alias var: $alias")
     val data = prev.records.data
     val newData = data.project(expr, ColumnName.of(header.slotFor(alias)))(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.graphs)
@@ -67,7 +67,7 @@ case class Alias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader) 
 case class SelectFields(in: MemOperator, fields: Seq[Var], header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-    println(s"Selecting fields: ${fields.mkString(",")}")
+    logger.info(s"Selecting fields: ${fields.mkString(",")}")
     val columnNames = fields.map(header.slotFor).map(ColumnName.of)
     val newData = prev.records.data.select(columnNames)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.graphs)
@@ -89,7 +89,7 @@ case class Project(in: MemOperator, expr: Expr, header: RecordHeader) extends Un
 
     val newData = headerNames.diff(dataNames) match {
       case Seq(one) =>
-        println(s"Projecting $expr to key $one")
+        logger.info(s"Projecting $expr to key $one")
         data.project(expr, one)(header, context)
     }
 
@@ -100,7 +100,7 @@ case class Project(in: MemOperator, expr: Expr, header: RecordHeader) extends Un
 case class Filter(in: MemOperator, expr: Expr, header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-    println(s"Filtering based on predicate: $expr")
+    logger.info(s"Filtering based on predicate: $expr")
     val newData = prev.records.data.filter(expr)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.graphs)
   }

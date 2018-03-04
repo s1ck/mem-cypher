@@ -13,6 +13,7 @@
  */
 package org.opencypher.memcypher.demo
 
+import com.typesafe.scalalogging.Logger
 import org.opencypher.okapi.api.configuration.Configuration.PrintTimings
 import org.opencypher.okapi.api.value.CypherValue.{CypherInteger, CypherMap, CypherString}
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
@@ -20,11 +21,13 @@ import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession}
 
 object Demo extends App {
 
+  val logger = Logger("Demo")
+
   PrintTimings.set()
 
   val query = "MATCH (n) WHERE n.age <> 42 RETURN n, n.age, n.foo"
 
-  println(
+  logger.info(
     s"""Executing query:
        |$query
        """.stripMargin)

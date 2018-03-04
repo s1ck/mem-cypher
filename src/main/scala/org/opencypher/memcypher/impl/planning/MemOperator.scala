@@ -13,6 +13,7 @@
  */
 package org.opencypher.memcypher.impl.planning
 
+import com.typesafe.scalalogging.Logger
 import org.opencypher.okapi.api.graph.QualifiedGraphName
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.relational.api.physical.PhysicalOperator
@@ -20,9 +21,12 @@ import org.opencypher.okapi.trees.AbstractTreeNode
 import org.opencypher.memcypher.api.MemCypherConverters._
 import org.opencypher.memcypher.api.{MemCypherGraph, MemRecords}
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
+import org.slf4j.LoggerFactory
 
 abstract class MemOperator extends AbstractTreeNode[MemOperator]
   with PhysicalOperator[MemRecords, MemCypherGraph, MemRuntimeContext] {
+
+  val logger = Logger(LoggerFactory.getLogger(getClass))
 
   def execute(implicit context: MemRuntimeContext): MemPhysicalResult
 
