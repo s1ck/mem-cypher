@@ -29,11 +29,66 @@
 
     <!-- Dependencies -->
     <dep.neo4j.version>3.4.0-alpha05</dep.neo4j.version>
-    <dep.okapi.version>1.0-SNAPSHOT</dep.okapi.version>
+    <dep.okapi.version>1.0.0-alpha02</dep.okapi.version>
     <dep.scalalogging.version>3.8.0</dep.scalalogging.version>
     <dep.scalatest.version>3.0.4</dep.scalatest.version>
     <dep.tck.version>1.0.0-M08</dep.tck.version>
   </properties>
+
+  <dependencies>
+    <!-- OKAPI -->
+
+    <dependency>
+      <groupId>org.opencypher</groupId>
+      <artifactId>okapi-relational</artifactId>
+      <version>${dep.okapi.version}</version>
+    </dependency>
+
+    <!-- Test dependencies -->
+    <dependency>
+      <groupId>org.opencypher</groupId>
+      <artifactId>okapi-ir</artifactId>
+      <type>test-jar</type>
+      <scope>test</scope>
+      <version>${dep.okapi.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.opencypher</groupId>
+      <artifactId>okapi-tck</artifactId>
+      <type>test-jar</type>
+      <scope>test</scope>
+      <version>${dep.okapi.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.opencypher</groupId>
+      <artifactId>tck</artifactId>
+      <version>${dep.tck.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.scalatest</groupId>
+      <artifactId>scalatest_${project.scala.binary.version}</artifactId>
+      <version>${dep.scalatest.version}</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.scala-lang</groupId>
+          <artifactId>scala-library</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.neo4j.test</groupId>
+      <artifactId>neo4j-harness</artifactId>
+      <version>${dep.neo4j.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+  </dependencies>
 
   <build>
     <plugins>
