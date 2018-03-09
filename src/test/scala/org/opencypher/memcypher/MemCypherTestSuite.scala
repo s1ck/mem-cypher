@@ -14,8 +14,8 @@
 package org.opencypher.memcypher
 
 import org.opencypher.memcypher.api.MemCypherSession
-import org.scalatest.FunSpec
+import org.scalatest.FunSuite
 
-abstract class MemCypherTestSuite extends FunSpec {
+abstract class MemCypherTestSuite extends FunSuite {
   implicit lazy val session: MemCypherSession = MemCypherSession.create
 }
