@@ -49,10 +49,6 @@ case class MemCypherGraph(
 
   private lazy val typeRelMap: Map[String, Seq[MemRelationship]] = rels.groupBy(_.relType)
 
-  private def allNodes = labelNodeMap.values.flatten.toSeq
-
-  private def allRelationships = typeRelMap.values.flatten.toSeq
-
   private def schemaForNodes(nodes: Seq[MemNode], initialSchema: Schema = Schema.empty): Schema =
     nodes.foldLeft(initialSchema) {
       case (tmpSchema, node) =>
@@ -72,7 +68,7 @@ case class MemCypherGraph(
     *
     * @return the schema of this graph.
     */
-  override def schema: Schema = schemaForRels(allRelationships, initialSchema = schemaForNodes(allNodes))
+  override def schema: Schema = schemaForRels(rels, initialSchema = schemaForNodes(nodes))
 
 
   /**
@@ -90,7 +86,7 @@ case class MemCypherGraph(
     */
   override def nodes(name: String, nodeCypherType: CTNode): MemRecords = {
     val node = Var(name)(nodeCypherType)
-    val filteredNodes = if (nodeCypherType.labels.isEmpty) allNodes else labelNodeMap(nodeCypherType.labels)
+    val filteredNodes = if (nodeCypherType.labels.isEmpty) nodes else labelNodeMap(nodeCypherType.labels)
     val filteredSchema = schemaForNodes(filteredNodes)
     val targetNodeHeader = RecordHeader.nodeFromSchema(node, filteredSchema)
     MemRecords.create(filteredNodes.map(node => CypherMap(name -> node)).toList, targetNodeHeader)
@@ -104,7 +100,7 @@ case class MemCypherGraph(
     */
   override def relationships(name: String, relCypherType: CTRelationship): MemRecords = {
     val rel = Var(name)(relCypherType)
-    val filteredRels = if (relCypherType.types.isEmpty) allRelationships else typeRelMap.filterKeys(relCypherType.types.contains).values.flatten.toSeq
+    val filteredRels = if (relCypherType.types.isEmpty) rels else typeRelMap.filterKeys(relCypherType.types.contains).values.flatten.toSeq
     val filteredSchema = schemaForRels(filteredRels)
     val targetHeader = RecordHeader.relationshipFromSchema(rel, filteredSchema)
     MemRecords.create(filteredRels.map(rel => CypherMap(name -> rel)).toList, targetHeader)
