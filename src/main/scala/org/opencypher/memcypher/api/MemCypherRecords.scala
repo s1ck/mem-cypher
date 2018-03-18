@@ -21,7 +21,7 @@ import org.opencypher.okapi.api.types.CypherType._
 import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherValue}
 import org.opencypher.okapi.impl.table.RecordsPrinter
 import org.opencypher.okapi.impl.util.PrintOptions
-import org.opencypher.okapi.ir.api.expr.{Expr, Var}
+import org.opencypher.okapi.ir.api.expr.Expr
 import org.opencypher.okapi.relational.impl.table.{ColumnName, RecordHeader}
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
@@ -83,14 +83,14 @@ case class Embeddings(data: List[CypherMap]) {
 
   def join(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
     // nested loop!
-    val joinedMaps = rows.flatMap(leftRow => {
+    val newData = rows.flatMap(leftRow => {
       val leftVal = leftRow.evaluate(left)
       other.rows
         .filter(rightRow => leftVal == rightRow.evaluate(right))
         .map(rightRow => leftRow ++ rightRow)
     }).toList
 
-    Embeddings(joinedMaps)
+    copy(data = newData)
   }
 }
 

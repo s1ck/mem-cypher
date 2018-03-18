@@ -37,13 +37,13 @@ case class MemCypherGraph(
   (implicit memSession: MemCypherSession) extends PropertyGraph {
 
   type CypherSession = MemCypherSession
-  type AdjacencyList = Seq[(Seq[Long], Seq[Long])]
+//  type AdjacencyList = Seq[(Seq[Long], Seq[Long])]
 
-  private lazy val structure: AdjacencyList = nodes.map { node =>
-    val outNodes = rels.filter(_.source == node.id).map(_.target)
-    val inNodes = rels.filter(_.target == node.id).map(_.source)
-    outNodes -> inNodes
-  }
+//  private lazy val structure: AdjacencyList = nodes.map { node =>
+//    val outNodes = rels.filter(_.source == node.id).map(_.target)
+//    val inNodes = rels.filter(_.target == node.id).map(_.source)
+//    outNodes -> inNodes
+//  }
 
   private lazy val labelNodeMap: Map[Set[String], Seq[MemNode]] = nodes.groupBy(_.labels)
 
