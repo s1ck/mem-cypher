@@ -40,7 +40,7 @@ object MemPhysicalPlannerContext {
   }
 }
 
-class MemOperatorProducer(implicit caps: MemCypherSession)
+class MemOperatorProducer(implicit memCypher: MemCypherSession)
   extends PhysicalOperatorProducer[MemOperator, MemRecords, MemCypherGraph, MemRuntimeContext] {
 
   /**
@@ -58,7 +58,8 @@ class MemOperatorProducer(implicit caps: MemCypherSession)
     * @param graph external (URI) reference to the input graph (e.g. the session graph)
     * @return start from unit operator
     */
-  override def planStartFromUnit(graph: LogicalExternalGraph): MemOperator = ???
+  override def planStartFromUnit(graph: LogicalExternalGraph): MemOperator =
+    StartFromUnit(graph)(memCypher)
 
   /**
     * Sets the source graph for the next query operation.
@@ -347,7 +348,16 @@ class MemOperatorProducer(implicit caps: MemCypherSession)
     * @param removeSelfRelationships set true, iff loops shall be removed from the ouput
     * @return expand source operator
     */
-  override def planExpandSource(first: MemOperator, second: MemOperator, third: MemOperator, source: Var, rel: Var, target: Var, header: RecordHeader, removeSelfRelationships: Boolean): MemOperator = ???
+  override def planExpandSource(
+    first: MemOperator,
+    second: MemOperator,
+    third: MemOperator,
+    source: Var,
+    rel: Var,
+    target: Var,
+    header: RecordHeader,
+    removeSelfRelationships: Boolean): MemOperator =
+    ExpandSource(first, second, third, source, rel, target, header, removeSelfRelationships)
 
   /**
     * Performs a bounded variable length path expression.

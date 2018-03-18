@@ -24,21 +24,30 @@ import org.opencypher.okapi.ir.api.expr.Var
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 object MemCypherGraph {
-  def empty(implicit session: MemCypherSession): MemCypherGraph = MemCypherGraph(Map.empty, Map.empty)(session)
+  def empty(implicit session: MemCypherSession): MemCypherGraph = MemCypherGraph(Seq.empty, Seq.empty)(session)
 
   def create(nodes: Seq[MemNode], rels: Seq[MemRelationship])(implicit session: MemCypherSession): MemCypherGraph = {
-    val labelNodeMap = nodes.groupBy(_.labels)
-    val typeRelMap = rels.groupBy(_.relType)
-    api.MemCypherGraph(labelNodeMap, typeRelMap)
+    api.MemCypherGraph(nodes, rels)
   }
 }
 
 case class MemCypherGraph(
-  labelNodeMap: Map[Set[String], Seq[MemNode]],
-  typeRelMap: Map[String, Seq[MemRelationship]])
+  nodes: Seq[MemNode],
+  rels: Seq[MemRelationship])
   (implicit memSession: MemCypherSession) extends PropertyGraph {
 
   type CypherSession = MemCypherSession
+//  type AdjacencyList = Seq[(Seq[Long], Seq[Long])]
+
+//  private lazy val structure: AdjacencyList = nodes.map { node =>
+//    val outNodes = rels.filter(_.source == node.id).map(_.target)
+//    val inNodes = rels.filter(_.target == node.id).map(_.source)
+//    outNodes -> inNodes
+//  }
+
+  private lazy val labelNodeMap: Map[Set[String], Seq[MemNode]] = nodes.groupBy(_.labels)
+
+  private lazy val typeRelMap: Map[String, Seq[MemRelationship]] = rels.groupBy(_.relType)
 
   private def allNodes = labelNodeMap.values.flatten.toSeq
 
@@ -57,7 +66,6 @@ case class MemCypherGraph(
         val properties = rel.properties.value.map { case (key, value) => key -> value.cypherType }
         tmpSchema.withRelationshipPropertyKeys(rel.relType, properties)
     }
-
 
   /**
     * The schema that describes this graph.

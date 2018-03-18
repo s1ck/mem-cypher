@@ -14,6 +14,7 @@
 package org.opencypher.memcypher.impl.value
 
 import com.typesafe.scalalogging.Logger
+import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherNode, CypherValue}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.PropertyKey
@@ -41,7 +42,30 @@ object CypherMapOps {
         case Property(Var(v), PropertyKey(k)) =>
           logger.info(s"Property lookup: `$v.$k` in $map")
           map(v) match {
-            case CypherNode(_, _, props) => props(k)
+            case MemNode(_, _, props) => props(k)
+            case MemRelationship(_, _, _, _, props) => props(k)
+            case _ => throw IllegalArgumentException("MemNode or MemRelationship", v)
+          }
+
+        case Id(Var(v)) =>
+          logger.info(s"Id lookup: `$v` in $map")
+          map(v) match {
+            case MemNode(id, _, _) => id
+            case _ => throw IllegalArgumentException("MemNode", v)
+          }
+
+        case StartNode(Var(r)) =>
+          logger.info(s"StartNode lookup: `r` in $map")
+          map(r) match {
+            case rel: MemRelationship => rel.source
+            case _ => throw IllegalArgumentException("MemRelationship", r)
+          }
+
+        case EndNode(Var(r)) =>
+          logger.info(s"EndNode lookup: `r` in $map")
+          map(r) match {
+            case rel: MemRelationship => rel.target
+            case _ => throw IllegalArgumentException("MemRelationship", r)
           }
 
         case Equals(lhs, rhs) =>

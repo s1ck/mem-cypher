@@ -21,7 +21,7 @@ import org.opencypher.okapi.ir.api.expr.{Expr, Var}
 import org.opencypher.okapi.logical.impl.{LogicalExternalGraph, LogicalGraph}
 import org.opencypher.okapi.relational.impl.table.{ColumnName, RecordHeader}
 
-abstract class UnaryOperator extends MemOperator {
+private [memcypher] abstract class UnaryOperator extends MemOperator {
 
   def in: MemOperator
 
@@ -30,13 +30,13 @@ abstract class UnaryOperator extends MemOperator {
   def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult
 }
 
-case class SetSourceGraph(in: MemOperator, graph: LogicalExternalGraph) extends UnaryOperator with InheritedHeader {
+final case class SetSourceGraph(in: MemOperator, graph: LogicalExternalGraph) extends UnaryOperator with InheritedHeader {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult =
     prev.withGraph(graph.name -> resolve(graph.qualifiedGraphName))
 }
 
-case class Scan(in: MemOperator, inGraph: LogicalGraph, v: Var, header: RecordHeader) extends UnaryOperator {
+final case class Scan(in: MemOperator, inGraph: LogicalGraph, v: Var, header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     val graphs = prev.graphs
@@ -54,7 +54,7 @@ case class Scan(in: MemOperator, inGraph: LogicalGraph, v: Var, header: RecordHe
   }
 }
 
-case class Alias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader) extends UnaryOperator {
+final case class Alias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Projecting $expr to alias var: $alias")
@@ -64,7 +64,7 @@ case class Alias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader) 
   }
 }
 
-case class SelectFields(in: MemOperator, fields: Seq[Var], header: RecordHeader) extends UnaryOperator {
+final case class SelectFields(in: MemOperator, fields: Seq[Var], header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Selecting fields: ${fields.mkString(",")}")
