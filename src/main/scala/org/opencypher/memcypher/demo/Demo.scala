@@ -25,7 +25,7 @@ object Demo extends App {
 
   PrintTimings.set()
 
-  val query = "MATCH (n) WHERE n.age <> 42 RETURN n, n.age, n.foo"
+  val query = "MATCH (n)-[:KNOWS]->(m) WHERE n.age = 42 RETURN n, n.age, n.foo, m"
 
   logger.info(
     s"""Executing query:

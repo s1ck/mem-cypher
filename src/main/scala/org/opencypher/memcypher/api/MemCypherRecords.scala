@@ -26,18 +26,16 @@ import org.opencypher.okapi.relational.impl.table.{ColumnName, RecordHeader}
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
 
-  def create(rows: List[CypherMap], header: RecordHeader): MemRecords = new MemRecords(Embeddings(rows), header) {}
+  def create(rows: List[CypherMap], header: RecordHeader): MemRecords = MemRecords(Embeddings(rows), header)
 
-  def create(embeddings: Embeddings, header: RecordHeader): MemRecords = new MemRecords(embeddings, header) {}
+  def create(embeddings: Embeddings, header: RecordHeader): MemRecords = MemRecords(embeddings, header)
 
-  override def unit()(implicit session: MemCypherSession): MemRecords = {
-    new MemRecords(Embeddings.empty, RecordHeader.empty) {}
-  }
+  override def unit()(implicit session: MemCypherSession): MemRecords = MemRecords(Embeddings.empty, RecordHeader.empty)
 }
 
-sealed abstract class MemRecords(
-  val data: Embeddings,
-  val header: RecordHeader) extends CypherRecords {
+case class MemRecords(
+  data: Embeddings,
+  header: RecordHeader) extends CypherRecords {
 
   override def rows: Iterator[String => CypherValue] = data.rows.map(_.value)
 
@@ -80,10 +78,20 @@ case class Embeddings(data: List[CypherMap]) {
   def filter(expr: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
     copy(data = data.filter(row => row.evaluate(expr).as[Boolean].getOrElse(false)))
 
-  def select(fields: Seq[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+  def select(fields: Seq[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
     copy(data = data.map(row => row.filterKeys(fields)))
-  }
 
+  def join(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+    // nested loop!
+    val joinedMaps = rows.flatMap(leftRow => {
+      val leftVal = leftRow.evaluate(left)
+      other.rows
+        .filter(rightRow => leftVal == rightRow.evaluate(right))
+        .map(rightRow => leftRow ++ rightRow)
+    }).toList
+
+    Embeddings(joinedMaps)
+  }
 }
 
 

@@ -23,7 +23,7 @@ import org.opencypher.memcypher.api.{MemCypherGraph, MemRecords}
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.slf4j.LoggerFactory
 
-abstract class MemOperator extends AbstractTreeNode[MemOperator]
+private [memcypher] abstract class MemOperator extends AbstractTreeNode[MemOperator]
   with PhysicalOperator[MemRecords, MemCypherGraph, MemRuntimeContext] {
 
   val logger = Logger(LoggerFactory.getLogger(getClass))
