@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.opencypher.memcypher.demo
+package org.opencypher.memcypher.apps
 
 import com.typesafe.scalalogging.Logger
 import org.opencypher.okapi.api.configuration.Configuration.PrintTimings
