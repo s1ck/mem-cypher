@@ -81,8 +81,8 @@ case class Embeddings(data: List[CypherMap]) {
   def select(fields: Seq[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
     copy(data = data.map(row => row.filterKeys(fields)))
 
-  def join(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
-    // nested loop!
+  // O(n * m), where n = |left| and m = |right|
+  def loopJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
     val newData = rows.flatMap(leftRow => {
       val leftVal = leftRow.evaluate(left)
       other.rows
@@ -91,6 +91,29 @@ case class Embeddings(data: List[CypherMap]) {
     }).toList
 
     copy(data = newData)
+  }
+
+  // O(n * log(m)), where n = |left| and m = |right|
+  def hashJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+    if (this.data.size > other.data.size) {
+      other.hashJoin(this, right, left)
+    } else {
+      val hashTable = this.rows.map(row => row.evaluate(left).hashCode() -> row)
+        .toSeq
+        .groupBy(_._1)
+
+      val newData = other.rows
+        .filter(rightRow => hashTable.contains(rightRow.evaluate(right).hashCode()))
+        .flatMap(rightRow => {
+          val rightValue = rightRow.evaluate(right)
+          hashTable(rightValue.hashCode())
+            .map(_._2)
+            .filter(leftRow => leftRow.evaluate(left) == rightValue) // hash collision check
+            .map(leftRow => leftRow ++ rightRow)
+        }).toList
+
+      copy(data = newData)
+    }
   }
 }
 

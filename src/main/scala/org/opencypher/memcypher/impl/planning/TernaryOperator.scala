@@ -54,8 +54,8 @@ final case class ExpandSource(
     implicit val h: RecordHeader = header
 
     val newData = first.records.data
-      .join(second.records.data, Id(source)(CTInteger), StartNode(rel)(CTInteger))
-      .join(third.records.data, EndNode(rel)(CTInteger), Id(target)(CTInteger))
+      .hashJoin(second.records.data, Id(source)(CTInteger), StartNode(rel)(CTInteger))
+      .hashJoin(third.records.data, EndNode(rel)(CTInteger), Id(target)(CTInteger))
 
     MemPhysicalResult(MemRecords(newData, header), first.graphs)
   }
