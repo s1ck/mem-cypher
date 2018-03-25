@@ -37,14 +37,14 @@ class TckMemCypherTest extends MemCypherTestSuite {
 
   // white list tests are run on all factories
   forAll(scenarios.whiteList) { scenario =>
-    test(s"[${defaultFactory.name}, ${WhiteList.name}] $scenario", WhiteList, TckMemCypher) {
+    it(s"[${defaultFactory.name}, ${WhiteList.name}] $scenario", WhiteList, TckMemCypher) {
       scenario(TCKGraph(defaultFactory, MemCypherGraph.empty)).execute()
     }
   }
 
   // black list tests are run on default factory
   forAll(scenarios.blackList) { scenario =>
-    test(s"[${defaultFactory.name}, ${BlackList.name}] $scenario", BlackList, TckMemCypher) {
+    it(s"[${defaultFactory.name}, ${BlackList.name}] $scenario", BlackList, TckMemCypher) {
       val tckGraph = TCKGraph(defaultFactory, MemCypherGraph.empty)
 
       Try(scenario(tckGraph).execute()) match {

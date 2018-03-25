@@ -35,35 +35,42 @@ object CypherMapOps {
 
       expr match {
 
+        case Var(v) =>
+          logger.info(s"Var lookup: `$v` in $map")
+          map.get(v) match {
+            case Some(entity) => entity
+            case None => throw IllegalArgumentException(s"Entity with var $v")
+          }
+
         case Param(name) =>
           logger.info(s"Parameter lookup: `$name` in ${context.parameters}")
           context.parameters(name)
 
-        case Property(Var(v), PropertyKey(k)) =>
+        case Property(v, PropertyKey(k)) =>
           logger.info(s"Property lookup: `$v.$k` in $map")
-          map(v) match {
+          evaluate(v) match {
             case MemNode(_, _, props) => props(k)
             case MemRelationship(_, _, _, _, props) => props(k)
             case _ => throw IllegalArgumentException("MemNode or MemRelationship", v)
           }
 
-        case Id(Var(v)) =>
+        case Id(v) =>
           logger.info(s"Id lookup: `$v` in $map")
-          map(v) match {
+          evaluate(v) match {
             case MemNode(id, _, _) => id
             case _ => throw IllegalArgumentException("MemNode", v)
           }
 
-        case StartNode(Var(r)) =>
+        case StartNode(r) =>
           logger.info(s"StartNode lookup: `r` in $map")
-          map(r) match {
+          evaluate(r) match {
             case rel: MemRelationship => rel.source
             case _ => throw IllegalArgumentException("MemRelationship", r)
           }
 
-        case EndNode(Var(r)) =>
+        case EndNode(r) =>
           logger.info(s"EndNode lookup: `r` in $map")
-          map(r) match {
+          evaluate(r) match {
             case rel: MemRelationship => rel.target
             case _ => throw IllegalArgumentException("MemRelationship", r)
           }
@@ -96,7 +103,7 @@ object CypherMapOps {
           false
 
         case _ =>
-          throw IllegalArgumentException("supported expression", expr.getClass.getSimpleName)
+          throw IllegalArgumentException("Supported Cypher Expression", expr.getClass.getSimpleName)
       }
     }
   }

@@ -13,9 +13,16 @@
  */
 package org.opencypher.memcypher
 
-import org.opencypher.memcypher.api.MemCypherSession
-import org.scalatest.FunSuite
+import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession}
+import org.opencypher.memcypher.support.creation.memcypher.MemCypherTestGraphFactory
+import org.opencypher.okapi.ir.test.support.creation.propertygraph.TestPropertyGraphFactory
+import org.scalatest.{FunSpec, Matchers}
 
-abstract class MemCypherTestSuite extends FunSuite {
+import org.opencypher.memcypher.api.MemCypherConverters._
+
+abstract class MemCypherTestSuite extends FunSpec with Matchers {
   implicit lazy val session: MemCypherSession = MemCypherSession.create
+
+  val initGraph: String => MemCypherGraph = (createQuery) =>
+    MemCypherTestGraphFactory(TestPropertyGraphFactory(createQuery)).asMemCypher
 }
