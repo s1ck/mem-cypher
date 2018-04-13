@@ -81,6 +81,9 @@ case class Embeddings(data: List[CypherMap]) {
   def select(fields: Seq[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
     copy(data = data.map(row => row.filterKeys(fields)))
 
+  def distinct(fields: Seq[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
+    copy(data = data.map(row => row.filterKeys(fields)).distinct)
+
   // O(n * m), where n = |left| and m = |right|
   def loopJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
     val newData = rows.flatMap(leftRow => {

@@ -211,8 +211,7 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
     * @param fields fields to compute distinct on
     * @return distinct operator
     */
-  override def planDistinct(in: MemOperator, fields: Set[Var]): MemOperator = ???
-
+  override def planDistinct(in: MemOperator, fields: Set[Var]): MemOperator = Distinct(in,fields) // Todo: getItWork
   /**
     * Orders the underlying records by the given expressions.
     *
