@@ -52,8 +52,6 @@ case class MemRecords(
 
   override def show(implicit options: PrintOptions): Unit = RecordsPrinter.print(this)
 
-  override def register(name: String): Unit = ???
-
   override def collect: Array[CypherMap] = iterator.toArray
 }
 
@@ -98,7 +96,8 @@ case class Embeddings(data: List[CypherMap]) {
     if (this.data.size > other.data.size) {
       other.hashJoin(this, right, left)
     } else {
-      val hashTable = this.rows.map(row => row.evaluate(left).hashCode() -> row)
+      val
+      hashTable = this.rows.map(row => row.evaluate(left).hashCode() -> row)
         .toSeq
         .groupBy(_._1)
 

@@ -41,7 +41,7 @@ object MemCypherResultBuilder {
     flat: FlatOperator,
     physical: MemOperator)(implicit context: MemRuntimeContext): MemCypherResult = {
     lazy val result = physical.execute
-    MemCypherResult(result.graphs.values.headOption, Some(result.records), QueryPlans(logical, flat, physical))
+    MemCypherResult(Some(result.workingGraph), Some(result.records), QueryPlans(logical, flat, physical))
   }
 }
 

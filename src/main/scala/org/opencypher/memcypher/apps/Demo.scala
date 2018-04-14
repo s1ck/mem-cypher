@@ -18,12 +18,14 @@ import org.opencypher.okapi.api.configuration.Configuration.PrintTimings
 import org.opencypher.okapi.api.value.CypherValue.{CypherInteger, CypherMap, CypherString}
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession}
+import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.PrintPhysicalPlan
 
 object Demo extends App {
 
   val logger = Logger("Demo")
 
   PrintTimings.set()
+  PrintPhysicalPlan.set()
 
   val query = "MATCH (n)-[:KNOWS]->(m) WHERE n.age = 42 RETURN n, n.age, n.foo, m"
 

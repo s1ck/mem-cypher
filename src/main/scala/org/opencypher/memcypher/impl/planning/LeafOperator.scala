@@ -14,24 +14,19 @@
 package org.opencypher.memcypher.impl.planning
 
 import org.opencypher.memcypher.api.{MemCypherSession, MemRecords}
-import org.opencypher.okapi.logical.impl.LogicalExternalGraph
-import org.opencypher.okapi.relational.impl.table.RecordHeader
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
+import org.opencypher.okapi.api.graph.QualifiedGraphName
+import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 private [memcypher] abstract class LeafOperator extends MemOperator
 
-final case class Start(records: MemRecords, graph: LogicalExternalGraph) extends LeafOperator {
+final case class Start(qgn: QualifiedGraphName, recordsOpt: Option[MemRecords])(implicit memCypher: MemCypherSession)
+  extends LeafOperator {
 
-  override val header: RecordHeader = records.header
+  override val header: RecordHeader = recordsOpt.map(_.header).getOrElse(RecordHeader.empty)
 
-  override def execute(implicit context: MemRuntimeContext): MemPhysicalResult =
-    MemPhysicalResult(records, Map(graph.name -> resolve(graph.qualifiedGraphName)))
-}
-
-final case class StartFromUnit(graph: LogicalExternalGraph)(implicit session: MemCypherSession) extends LeafOperator {
-
-  override def header: RecordHeader = RecordHeader.empty
-
-  override def execute(implicit context: MemRuntimeContext): MemPhysicalResult =
-    MemPhysicalResult(MemRecords.unit(), Map(graph.name -> resolve(graph.qualifiedGraphName)))
+  override def execute(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    val records = recordsOpt.getOrElse(MemRecords.unit())
+    MemPhysicalResult(records, resolve(qgn), qgn)
+  }
 }

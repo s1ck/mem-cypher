@@ -18,7 +18,6 @@ import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.expr.{Expr, Var}
-import org.opencypher.okapi.logical.impl.{LogicalExternalGraph, LogicalGraph}
 import org.opencypher.okapi.relational.impl.table.{ColumnName, RecordHeader}
 
 private [memcypher] abstract class UnaryOperator extends MemOperator {
@@ -30,17 +29,10 @@ private [memcypher] abstract class UnaryOperator extends MemOperator {
   def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult
 }
 
-final case class SetSourceGraph(in: MemOperator, graph: LogicalExternalGraph) extends UnaryOperator with InheritedHeader {
-
-  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult =
-    prev.withGraph(graph.name -> resolve(graph.qualifiedGraphName))
-}
-
-final case class Scan(in: MemOperator, inGraph: LogicalGraph, v: Var, header: RecordHeader) extends UnaryOperator {
+final case class Scan(in: MemOperator, v: Var, header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-    val graphs = prev.graphs
-    val graph = graphs(inGraph.name)
+    val graph = prev.workingGraph
     val records = v.cypherType match {
       case r: CTRelationship =>
         graph.relationships(v.name, r)
@@ -50,7 +42,7 @@ final case class Scan(in: MemOperator, inGraph: LogicalGraph, v: Var, header: Re
         throw IllegalArgumentException("an entity type", x)
     }
     assert(header == records.header)
-    MemPhysicalResult(records, graphs)
+    MemPhysicalResult(records, graph, prev.workingGraphName)
   }
 }
 
@@ -60,7 +52,7 @@ final case class Alias(in: MemOperator, expr: Expr, alias: Var, header: RecordHe
     logger.info(s"Projecting $expr to alias var: $alias")
     val data = prev.records.data
     val newData = data.project(expr, ColumnName.of(header.slotFor(alias)))(header, context)
-    MemPhysicalResult(MemRecords.create(newData, header), prev.graphs)
+    MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
 
@@ -70,7 +62,7 @@ final case class SelectFields(in: MemOperator, fields: Seq[Var], header: RecordH
     logger.info(s"Selecting fields: ${fields.mkString(",")}")
     val columnNames = fields.map(header.slotFor).map(ColumnName.of)
     val newData = prev.records.data.select(columnNames)(header, context)
-    MemPhysicalResult(MemRecords.create(newData, header), prev.graphs)
+    MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
 
@@ -93,7 +85,7 @@ case class Project(in: MemOperator, expr: Expr, header: RecordHeader) extends Un
         data.project(expr, one)(header, context)
     }
 
-    MemPhysicalResult(MemRecords.create(newData, header), prev.graphs)
+    MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
 
@@ -102,6 +94,6 @@ case class Filter(in: MemOperator, expr: Expr, header: RecordHeader) extends Una
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Filtering based on predicate: $expr")
     val newData = prev.records.data.filter(expr)(header, context)
-    MemPhysicalResult(MemRecords.create(newData, header), prev.graphs)
+    MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
