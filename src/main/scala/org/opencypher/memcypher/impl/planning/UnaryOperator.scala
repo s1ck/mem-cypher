@@ -93,3 +93,13 @@ case class Filter(in: MemOperator, expr: Expr, header: RecordHeader) extends Una
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
+
+case class Distinct(in: MemOperator, fields: Set[Var]) extends UnaryOperator with InheritedHeader {
+
+  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    logger.info(s"Distinct on ${fields.mkString(",")}")
+    val newData = prev.records.data.distinct(fields)(header,context)
+    MemPhysicalResult(MemRecords.create(newData, header),prev.workingGraph,prev.workingGraphName)
+  }
+}
+
