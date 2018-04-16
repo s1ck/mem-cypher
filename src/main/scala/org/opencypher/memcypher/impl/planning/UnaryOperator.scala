@@ -14,11 +14,12 @@
 package org.opencypher.memcypher.impl.planning
 
 import org.opencypher.memcypher.api.MemRecords
+import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.expr.{Expr, Var}
-import org.opencypher.okapi.relational.impl.table.{ColumnName, RecordHeader}
+import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 private [memcypher] abstract class UnaryOperator extends MemOperator {
 
@@ -49,9 +50,10 @@ final case class Scan(in: MemOperator, v: Var, header: RecordHeader) extends Una
 final case class Alias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-    logger.info(s"Projecting $expr to alias var: $alias")
     val data = prev.records.data
-    val newData = data.project(expr, ColumnName.of(header.slotFor(alias)))(header, context)
+    val newColumn = header.slotFor(alias).columnName
+    logger.info(s"Projecting $expr to alias column: $newColumn")
+    val newData = data.project(expr, newColumn)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
@@ -60,22 +62,16 @@ final case class SelectFields(in: MemOperator, fields: Seq[Var], header: RecordH
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Selecting fields: ${fields.mkString(",")}")
-    val columnNames = fields.map(header.slotFor).map(ColumnName.of)
+    val columnNames = fields.map(header.slotFor).map(_.columnName)
     val newData = prev.records.data.select(columnNames)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
 
-case class SelectGraphs(in: MemOperator, graphs: Set[String], header: RecordHeader) extends UnaryOperator {
-
-  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult =
-    prev
-}
-
 case class Project(in: MemOperator, expr: Expr, header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-    val headerNames = header.slotsFor(expr).map(ColumnName.of)
+    val headerNames = header.slotsFor(expr).map(_.columnName)
     val dataNames = prev.records.data.columns.toSeq
     val data = prev.records.data
 
