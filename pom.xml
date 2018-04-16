@@ -29,8 +29,8 @@
 
     <!-- Dependencies -->
     <dep.logback.version>1.2.3</dep.logback.version>
-    <dep.neo4j.version>3.4.0-alpha05</dep.neo4j.version>
-    <dep.okapi.version>1.0.0-alpha02</dep.okapi.version>
+    <dep.neo4j.harness.version>3.3.3</dep.neo4j.harness.version>
+    <dep.okapi.version>1.0.0-beta.1</dep.okapi.version>
     <dep.scala-csv.version>1.3.5</dep.scala-csv.version>
     <dep.scalalogging.version>3.8.0</dep.scalalogging.version>
     <dep.scalatest.version>3.0.4</dep.scalatest.version>
@@ -108,7 +108,7 @@
     <dependency>
       <groupId>org.neo4j.test</groupId>
       <artifactId>neo4j-harness</artifactId>
-      <version>${dep.neo4j.version}</version>
+      <version>${dep.neo4j.harness.version}</version>
       <scope>test</scope>
     </dependency>
 

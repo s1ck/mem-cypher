@@ -37,13 +37,6 @@ case class MemCypherGraph(
   (implicit memSession: MemCypherSession) extends PropertyGraph {
 
   type CypherSession = MemCypherSession
-//  type AdjacencyList = Seq[(Seq[Long], Seq[Long])]
-
-//  private lazy val structure: AdjacencyList = nodes.map { node =>
-//    val outNodes = rels.filter(_.source == node.id).map(_.target)
-//    val inNodes = rels.filter(_.target == node.id).map(_.source)
-//    outNodes -> inNodes
-//  }
 
   private lazy val labelNodeMap: Map[Set[String], Seq[MemNode]] = nodes.groupBy(_.labels)
 
@@ -106,12 +99,5 @@ case class MemCypherGraph(
     MemRecords.create(filteredRels.map(rel => CypherMap(name -> rel)).toList, targetHeader)
   }
 
-  /**
-    * Constructs the union of this graph and the argument graph.
-    * The argument graph has to be managed by the same session as this graph.
-    *
-    * @param other the argument graph with which to union.
-    * @return the union of this and the argument graph.
-    */
-  override def union(other: PropertyGraph): PropertyGraph = ???
+  override def unionAll(others: PropertyGraph*): PropertyGraph = ???
 }
