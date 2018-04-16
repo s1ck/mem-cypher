@@ -27,7 +27,7 @@ object Demo extends App {
   PrintTimings.set()
   PrintPhysicalPlan.set()
 
-  val query = "MATCH (n)-->(m) RETURN DISTINCT n, m"
+  val query = "MATCH (n)-->(m) RETURN DISTINCT n.name"
 
   logger.info(
     s"""Executing query:
@@ -62,7 +62,6 @@ object DemoData {
     bobId,
     Set("Person"),
     CypherMap(
-      "name" -> CypherString("Bob"),
       "age" -> CypherInteger(23)
     )
   )

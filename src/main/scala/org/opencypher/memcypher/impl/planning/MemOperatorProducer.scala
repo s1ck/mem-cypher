@@ -71,7 +71,7 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
   override def planEmptyRecords(in: MemOperator, header: RecordHeader): MemOperator = ???
 
   override def planDistinct(in: MemOperator, fields: Set[Var]): MemOperator = 
-	Distinct(in,fields) // Todo: getItWork
+	  Distinct(in,fields)
  
   override def planRemoveAliases(in: MemOperator, aliases: Set[(ProjectedField, ProjectedExpr)], header: RecordHeader): MemOperator = ???
 

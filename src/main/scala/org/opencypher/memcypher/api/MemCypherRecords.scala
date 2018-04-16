@@ -21,7 +21,7 @@ import org.opencypher.okapi.api.types.CypherType._
 import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherValue}
 import org.opencypher.okapi.impl.table.RecordsPrinter
 import org.opencypher.okapi.impl.util.PrintOptions
-import org.opencypher.okapi.ir.api.expr.Expr
+import org.opencypher.okapi.ir.api.expr.{Expr, Var}
 import org.opencypher.okapi.relational.impl.table.{ColumnName, RecordHeader}
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
@@ -79,8 +79,12 @@ case class Embeddings(data: List[CypherMap]) {
   def select(fields: Seq[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
     copy(data = data.map(row => row.filterKeys(fields)))
 
-  def distinct(fields: Seq[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
-    copy(data = data.map(row => row.filterKeys(fields)).distinct)
+  def distinct(fields: Set[Var])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+    // converting "." to "_dot_" to match with header
+    val columnNames = for{ x <- fields} yield x.name.replace(".","_dot_")
+    copy(data = select(columnNames.toSeq)(header,context).data.distinct)
+  }
+
 
   // O(n * m), where n = |left| and m = |right|
   def loopJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
