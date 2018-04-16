@@ -39,7 +39,7 @@ case class MemRecords(
 
   override def rows: Iterator[String => CypherValue] = data.rows.map(_.value)
 
-  override def columns: Seq[String] = header.fields.map(ColumnName.from).toSeq
+  override def columns: Seq[String] = header.fieldsInOrder
 
   override def columnType: Map[String, CypherType] = data.data.headOption match {
     case Some(row) => row.value.mapValues(_.cypherType)
