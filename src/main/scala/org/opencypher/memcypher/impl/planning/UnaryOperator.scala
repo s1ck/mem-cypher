@@ -98,7 +98,7 @@ case class Filter(in: MemOperator, expr: Expr, header: RecordHeader) extends Una
   }
 }
 
-case class Distinct(in: MemOperator, fields: Set[Var]) extends UnaryOperator  with InheritedHeader {
+case class Distinct(in: MemOperator, fields: Set[Var]) extends UnaryOperator with InheritedHeader {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Distinct on ${fields.mkString(",")}")

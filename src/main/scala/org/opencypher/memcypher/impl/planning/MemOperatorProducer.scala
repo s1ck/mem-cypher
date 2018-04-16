@@ -77,7 +77,6 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
 
   override def planAggregate(in: MemOperator, group: Set[Var], aggregations: Set[(Var, Aggregator)], header: RecordHeader): MemOperator = ???
 
-
   override def planOrderBy(in: MemOperator, sortItems: Seq[SortItem[Expr]], header: RecordHeader): MemOperator = ???
 
   override def planUnwind(in: MemOperator, list: Expr, item: Var, header: RecordHeader): MemOperator = ???
