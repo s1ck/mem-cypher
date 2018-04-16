@@ -80,7 +80,7 @@ case class Embeddings(data: List[CypherMap]) {
     copy(data = data.map(row => row.filterKeys(fields)))
 
   def distinct(fields: Set[Var])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
-    val columnNames = fields.map(x => ColumnName.from(x.name))
+    val columnNames = fields.map(_.name)
     copy(data = select(columnNames.toSeq)(header,context).data.distinct)
   }
 
