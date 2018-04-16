@@ -15,8 +15,12 @@ package org.opencypher.memcypher.impl
 
 import org.opencypher.okapi.relational.api.physical.PhysicalResult
 import org.opencypher.memcypher.api.{MemCypherGraph, MemRecords}
+import org.opencypher.okapi.api.graph.QualifiedGraphName
 
-case class MemPhysicalResult(records: MemRecords, graphs: Map[String, MemCypherGraph])
+case class MemPhysicalResult(
+  records: MemRecords,
+  workingGraph: MemCypherGraph,
+  workingGraphName: QualifiedGraphName)
   extends PhysicalResult[MemRecords, MemCypherGraph] {
 
   /**
@@ -27,22 +31,4 @@ case class MemPhysicalResult(records: MemRecords, graphs: Map[String, MemCypherG
     */
   override def mapRecordsWithDetails(f: MemRecords => MemRecords): MemPhysicalResult =
     copy(records = f(records))
-
-  /**
-    * Returns a result that only contains the graphs with the given names.
-    *
-    * @param names graphs to select
-    * @return updated result containing only selected graphs
-    */
-  override def selectGraphs(names: Set[String]): MemPhysicalResult =
-    copy(graphs = graphs.filterKeys(names))
-
-  /**
-    * Stores the given graph identifed by the specified name in the result.
-    *
-    * @param t tuple mapping a graph name to a graph
-    * @return updated result
-    */
-  override def withGraph(t: (String, MemCypherGraph)): MemPhysicalResult =
-    copy(graphs = graphs.updated(t._1, t._2))
 }

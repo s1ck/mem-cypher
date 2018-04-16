@@ -13,28 +13,31 @@
  */
 package org.opencypher.memcypher.api
 
-import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 
+import org.opencypher.memcypher.api.MemCypherConverters._
+import org.opencypher.memcypher.impl.MemRuntimeContext
+import org.opencypher.memcypher.impl.planning.{MemOperatorProducer, MemPhysicalPlannerContext}
 import org.opencypher.okapi.api.graph._
+import org.opencypher.okapi.api.io.PropertyGraphDataSource
 import org.opencypher.okapi.api.table.CypherRecords
 import org.opencypher.okapi.api.value.CypherValue
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
-import org.opencypher.okapi.impl.io.SessionPropertyGraphDataSource
+import org.opencypher.okapi.impl.exception.NotImplementedException
+import org.opencypher.okapi.impl.io.SessionGraphDataSource
 import org.opencypher.okapi.impl.util.Measurement.time
-import org.opencypher.okapi.ir.api.IRExternalGraph
+import org.opencypher.okapi.ir.api.expr.Expr
+import org.opencypher.okapi.ir.api.{CypherQuery, IRCatalogGraph}
 import org.opencypher.okapi.ir.impl.parse.CypherParser
-import org.opencypher.okapi.ir.impl.{IRBuilder, IRBuilderContext}
+import org.opencypher.okapi.ir.impl.{IRBuilder, IRBuilderContext, QGNGenerator, QueryCatalog}
 import org.opencypher.okapi.logical.api.configuration.LogicalConfiguration.PrintLogicalPlan
 import org.opencypher.okapi.logical.impl.{LogicalOperatorProducer, LogicalOptimizer, LogicalPlanner, LogicalPlannerContext}
-import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.PrintFlatPlan
+import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.{PrintFlatPlan, PrintPhysicalPlan}
 import org.opencypher.okapi.relational.impl.flat.{FlatPlanner, FlatPlannerContext}
 import org.opencypher.okapi.relational.impl.physical.PhysicalPlanner
-import org.opencypher.memcypher.api.MemCypherConverters._
-import org.opencypher.memcypher.impl.planning.{MemOperatorProducer, MemPhysicalPlannerContext}
-import org.opencypher.memcypher.impl.MemRuntimeContext
 
 object MemCypherSession {
-  def create: MemCypherSession = new MemCypherSession(SessionPropertyGraphDataSource.Namespace)
+  def create: MemCypherSession = new MemCypherSession(SessionGraphDataSource.Namespace)
 }
 
 class MemCypherSession(override val sessionNamespace: Namespace) extends CypherSession {
@@ -48,6 +51,14 @@ class MemCypherSession(override val sessionNamespace: Namespace) extends CypherS
   private val physicalPlanner = new PhysicalPlanner(new MemOperatorProducer()(this))
   private val parser = CypherParser
 
+  private val maxSessionGraphId: AtomicLong = new AtomicLong(0)
+
+  private[opencypher] val emptyGraphQgn = QualifiedGraphName(sessionNamespace, GraphName("emptyGraph"))
+
+  def catalog(qualifiedGraphName: QualifiedGraphName): PropertyGraphDataSource = {
+    dataSourceMapping(qualifiedGraphName.namespace)
+  }
+
   /**
     * Executes a Cypher query in this session on the current ambient graph.
     *
@@ -58,29 +69,39 @@ class MemCypherSession(override val sessionNamespace: Namespace) extends CypherS
   override def cypher(query: String, parameters: CypherMap = CypherMap.empty, drivingTable: Option[CypherRecords] = None): CypherResult =
     cypherOnGraph(MemCypherGraph.empty(this), query, parameters, drivingTable)
 
-  override def cypherOnGraph(graph: PropertyGraph, query: String, parameters: CypherMap, drivingTable: Option[CypherRecords]): CypherResult = {
+  override def cypherOnGraph(graph: PropertyGraph, query: String, parameters: CypherMap, maybeDrivingTable: Option[CypherRecords]): CypherResult = {
     val ambientGraph = mountAmbientGraph(graph)
 
     val (stmt, extractedLiterals, semState) = time("AST construction")(parser.process(query)(CypherParser.defaultContext))
 
     val extractedParameters = extractedLiterals.mapValues(v => CypherValue(v))
-    val allParameters = parameters ++ extractedParameters
+    val allParameters: CypherMap = parameters ++ extractedParameters
 
-    val ir = time("IR translation")(IRBuilder(stmt)(IRBuilderContext.initial(query, allParameters, semState, ambientGraph, dataSource)))
+    val ir = time("IR translation")(IRBuilder(stmt)(IRBuilderContext.initial(query, allParameters, semState, ambientGraph, qgnGenerator, dataSourceMapping)))
 
-    val logicalPlannerContext = LogicalPlannerContext(graph.schema, Set.empty, ir.model.graphs.mapValues(_.namespace).andThen(dataSource), ambientGraph)
-    val logicalPlan = time("Logical planning")(logicalPlanner(ir)(logicalPlannerContext))
+    val cypherQuery = ir match {
+      case cq: CypherQuery[Expr] => cq
+      case other => throw NotImplementedException(s"No support for IR of type: ${other.getClass}")
+    }
+
+    val logicalPlannerContext = LogicalPlannerContext(graph.schema, Set.empty, catalog)
+    val logicalPlan = time("Logical planning")(logicalPlanner(cypherQuery)(logicalPlannerContext))
     val optimizedLogicalPlan = time("Logical optimization")(logicalOptimizer(logicalPlan)(logicalPlannerContext))
+
     if (PrintLogicalPlan.isSet) {
       println(logicalPlan.pretty)
       println(optimizedLogicalPlan.pretty)
     }
 
-    val flatPlan = time("Flat planning")(flatPlanner(optimizedLogicalPlan)(FlatPlannerContext(parameters)))
+    val flatPlan = time("Flat planning")(flatPlanner(optimizedLogicalPlan)(FlatPlannerContext(allParameters)))
     if (PrintFlatPlan.isSet) println(flatPlan.pretty)
 
-    val memPlannerContext = MemPhysicalPlannerContext(this, super.graph, MemRecords.unit()(self), allParameters)
+    val memPlannerContext = MemPhysicalPlannerContext.from(QueryCatalog(dataSourceMapping), MemRecords.unit()(this), allParameters)(this)
     val memPlan = time("Physical planning")(physicalPlanner.process(flatPlan)(memPlannerContext))
+
+    if (PrintPhysicalPlan.isSet) {
+      println(memPlan.pretty)
+    }
 
     time("Query execution")(MemCypherResultBuilder.from(logicalPlan, flatPlan, memPlan)(MemRuntimeContext(memPlannerContext.parameters, graphAt)))
   }
@@ -88,9 +109,15 @@ class MemCypherSession(override val sessionNamespace: Namespace) extends CypherS
   private def graphAt(qualifiedGraphName: QualifiedGraphName): Option[MemCypherGraph] =
     Some(dataSource(qualifiedGraphName.namespace).graph(qualifiedGraphName.graphName).asMemCypher)
 
-  private def mountAmbientGraph(ambient: PropertyGraph): IRExternalGraph = {
-    val graphName = GraphName(UUID.randomUUID().toString)
-    val qualifiedGraphName = store(graphName, ambient)
-    IRExternalGraph(graphName.value, ambient.schema, qualifiedGraphName)
+  private[opencypher] val qgnGenerator = new QGNGenerator {
+    override def generate: QualifiedGraphName = {
+      QualifiedGraphName(SessionGraphDataSource.Namespace, GraphName(s"tmp#${maxSessionGraphId.incrementAndGet}"))
+    }
+  }
+
+  private def mountAmbientGraph(ambient: PropertyGraph): IRCatalogGraph = {
+    val qgn = qgnGenerator.generate
+    store(qgn, ambient)
+    IRCatalogGraph(qgn, ambient.schema)
   }
 }
