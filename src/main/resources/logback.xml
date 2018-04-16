@@ -1,5 +1,10 @@
 <configuration>
-  <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender"/>
+  <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d %-5level [%thread] %logger{0}: %msg%n</pattern>
+      <outputPatternAsHeader>true</outputPatternAsHeader>
+    </encoder>
+  </appender>
 
   <root level="debug">
     <appender-ref ref="stdout"/>
