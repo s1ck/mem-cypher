@@ -15,13 +15,14 @@ package org.opencypher.memcypher.impl.value
 
 import com.typesafe.scalalogging.Logger
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
-import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherNode, CypherValue}
+import org.opencypher.okapi.api.value.CypherValue.{CypherList, CypherMap, CypherNode, CypherValue}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.PropertyKey
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 import org.opencypher.memcypher.impl.MemRuntimeContext
 import org.opencypher.memcypher.impl.value.CypherValueOps._
+import org.opencypher.okapi.api.types.CTNode
 
 object CypherMapOps {
 
@@ -79,6 +80,20 @@ object CypherMapOps {
           logger.info(s"Equals: `$expr` in: $map")
 
           evaluate(lhs) == evaluate(rhs)
+
+        case Labels(innerExpr) =>
+          logger.info(s"Labels: `$innerExpr` in: $map")
+          evaluate(innerExpr) match {
+            case n: MemNode => CypherList(n.labels.toSeq: _*)
+            case _ => throw IllegalArgumentException("MemNode", innerExpr)
+          }
+
+        case Type(innerExpr) =>
+          logger.info(s"Type: `$innerExpr` in: $map")
+          evaluate(innerExpr) match {
+            case n: MemRelationship => n.relType
+            case _ => throw IllegalArgumentException("MemRelationship", innerExpr)
+          }
 
         case Not(innerExpr) =>
           logger.info(s"Not: `$innerExpr` in: $map")
