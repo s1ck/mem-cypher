@@ -27,7 +27,7 @@ object Demo extends App {
   PrintTimings.set()
   PrintPhysicalPlan.set()
 
-  val query = "MATCH (n)-[:KNOWS]->(m) WHERE n.age = 42 RETURN n, n.age, n.foo, m"
+  val query = "MATCH (n)-->(m) RETURN DISTINCT n.name"
 
   logger.info(
     s"""Executing query:
@@ -45,7 +45,7 @@ object DemoData {
 
   def nodes = Seq(alice, bob)
 
-  def rels = Seq(aliceKnowsBob)
+  def rels = Seq(aliceKnowsBob, aliceOwnsBob)
 
   val aliceId = 0L
   val alice = MemNode(
@@ -62,7 +62,6 @@ object DemoData {
     bobId,
     Set("Person"),
     CypherMap(
-      "name" -> CypherString("Bob"),
       "age" -> CypherInteger(23)
     )
   )
@@ -73,5 +72,13 @@ object DemoData {
     bobId,
     "KNOWS",
     CypherMap("since" -> CypherInteger(2018))
+  )
+
+  val aliceOwnsBob = MemRelationship(
+    0L,
+    aliceId,
+    bobId,
+    "OWNS",
+    CypherMap("since" -> CypherInteger(2017))
   )
 }

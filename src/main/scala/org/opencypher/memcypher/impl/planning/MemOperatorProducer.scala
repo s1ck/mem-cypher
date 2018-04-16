@@ -67,10 +67,12 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
   override def planJoin(lhs: MemOperator, rhs: MemOperator, joinColumns: Seq[(Expr, Expr)], header: RecordHeader): MemOperator =
     Join(lhs, rhs, joinColumns, header)
 
-  override def planDistinct(in: MemOperator, fields: Set[Var]): MemOperator = ???
 
   override def planEmptyRecords(in: MemOperator, header: RecordHeader): MemOperator = ???
 
+  override def planDistinct(in: MemOperator, fields: Set[Var]): MemOperator = 
+	  Distinct(in,fields)
+ 
   override def planRemoveAliases(in: MemOperator, aliases: Set[(ProjectedField, ProjectedExpr)], header: RecordHeader): MemOperator = ???
 
   override def planAggregate(in: MemOperator, group: Set[Var], aggregations: Set[(Var, Aggregator)], header: RecordHeader): MemOperator = ???
