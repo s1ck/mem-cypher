@@ -27,7 +27,7 @@ object Demo extends App {
   PrintTimings.set()
   PrintPhysicalPlan.set()
 
-  val query = "MATCH (n:Person) RETURN COUNT(*)"
+  val query = "MATCH (n:Person) RETURN min(n.age), max(n.age)"
 
   logger.info(
     s"""Executing query:

@@ -15,6 +15,7 @@ package org.opencypher.memcypher.api
 
 import org.opencypher.memcypher.impl.MemRuntimeContext
 import org.opencypher.memcypher.impl.value.CypherMapOps._
+import org.opencypher.memcypher.impl.value.CypherValueOps._
 import org.opencypher.okapi.api.table.{CypherRecords, CypherRecordsCompanion}
 import org.opencypher.okapi.api.types.CypherType
 import org.opencypher.okapi.api.types.CypherType._
@@ -24,7 +25,6 @@ import org.opencypher.okapi.impl.table.RecordsPrinter
 import org.opencypher.okapi.impl.util.PrintOptions
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
-import org.opencypher.memcypher.impl.value.CypherValueOps._
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
 
@@ -111,6 +111,20 @@ case class Embeddings(data: List[CypherMap]) {
                 .filter(!_.isNull)
                 .reduce(_ + _)
               current.updated(to, sum)
+
+            case Min(inner) =>
+              val min = values
+                .map(_.evaluate(inner))
+                .sortWith(_ < _)
+                .head
+              current.updated(to, min)
+
+            case Max(inner) =>
+              val max = values
+                .map(_.evaluate(inner))
+                .sortWith(_ > _)
+                .head
+              current.updated(to, max)
 
             case other => throw NotImplementedException(s"Aggregation $other not yet supported")
           }
