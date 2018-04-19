@@ -73,9 +73,10 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
   override def planDistinct(in: MemOperator, fields: Set[Var]): MemOperator = 
 	  Distinct(in,fields)
  
-  override def planRemoveAliases(in: MemOperator, aliases: Set[(ProjectedField, ProjectedExpr)], header: RecordHeader): MemOperator = ???
+  override def planAggregate(in: MemOperator, group: Set[Var], aggregations: Set[(Var, Aggregator)], header: RecordHeader): MemOperator =
+    Aggregate(in, group, aggregations, header)
 
-  override def planAggregate(in: MemOperator, group: Set[Var], aggregations: Set[(Var, Aggregator)], header: RecordHeader): MemOperator = ???
+  override def planRemoveAliases(in: MemOperator, aliases: Set[(ProjectedField, ProjectedExpr)], header: RecordHeader): MemOperator = ???
 
   override def planOrderBy(in: MemOperator, sortItems: Seq[SortItem[Expr]], header: RecordHeader): MemOperator = ???
 
