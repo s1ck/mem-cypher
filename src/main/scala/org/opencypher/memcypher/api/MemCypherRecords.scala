@@ -102,6 +102,9 @@ case class Embeddings(data: List[CypherMap]) {
               val toCount = if (distinct) evaluated.distinct else evaluated
               current.updated(to, CypherInteger(toCount.size))
 
+            case CountStar(_) =>
+              current.updated(to, CypherInteger(values.size))
+
             case Sum(inner) =>
               val sum = values
                 .map(_.evaluate(inner))
