@@ -13,9 +13,11 @@
  */
 package org.opencypher.memcypher.impl.value
 
+import org.opencypher.memcypher.impl.value.CypherTypeOps._
 import org.opencypher.okapi.api.types.CypherType._
-import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherValue}
-import CypherTypeOps._
+import org.opencypher.okapi.api.types.{CTFloat, CTInteger, CTNumber}
+import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherFloat, CypherInteger, CypherValue}
+import org.opencypher.okapi.impl.exception.IllegalArgumentException
 
 object CypherValueOps {
 
@@ -54,6 +56,18 @@ object CypherValueOps {
 
     def <=(other: CypherValue): Boolean = {
       value.cypherType.join(other.cypherType).ordering.asInstanceOf[Ordering[Any]].lteq(value.unwrap, other.unwrap)
+    }
+
+    def +(other: CypherValue): CypherValue = {
+      if (value.cypherType.sameTypeAs(other.cypherType).isTrue && value.cypherType.subTypeOf(CTNumber).isTrue) {
+        value.cypherType match {
+          case CTInteger => CypherInteger(value.as[Long].get + other.as[Long].get)
+          case CTFloat => CypherFloat(value.as[Double].get + other.as[Double].get)
+          case _ => throw IllegalArgumentException("CypherInteger or CypherFloat", other)
+        }
+      } else {
+        throw IllegalArgumentException("Identical number types", s"${value.cypherType} and ${other.cypherType}")
+      }
     }
   }
 
