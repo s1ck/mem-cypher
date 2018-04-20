@@ -17,6 +17,7 @@ import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.types.CTInteger
 import org.opencypher.okapi.impl.exception.NotImplementedException
 import org.opencypher.okapi.ir.api.expr.{Expr, Id, Var}
+import org.opencypher.okapi.relational.impl.physical.JoinType
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 private [memcypher] abstract class BinaryOperator extends MemOperator {
@@ -35,7 +36,8 @@ final case class Join(
   left: MemOperator,
   right: MemOperator,
   joinExprs: Seq[(Expr, Expr)],
-  header: RecordHeader) extends BinaryOperator {
+  header: RecordHeader,
+  joinType: JoinType) extends BinaryOperator {
 
   override def executeBinary(left: MemPhysicalResult, right: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     if (joinExprs.length > 1) throw NotImplementedException("Multi-way join support")
