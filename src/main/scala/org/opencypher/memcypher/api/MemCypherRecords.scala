@@ -158,26 +158,50 @@ case class Embeddings(data: List[CypherMap]) {
   // Binary operators
   // ----------------
 
-  def join(other: Embeddings, left: Expr, right: Expr, joinType: JoinType)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
-    if (this.data.size > other.data.size) {
-      other.join(this, right, left, joinType)
+  def innerJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+    if (this.data.size < other.data.size) {
+      join(other, left, right, rightOuter = false)
     } else {
-      val
-      hashTable = this.rows.map(row => row.evaluate(left).hashCode() -> row)
-        .toSeq
-        .groupBy(_._1)
+      other.join(this, right, left, rightOuter = false)
+    }
+  }
 
-      val newData = other.rows
-        .filter(rightRow => hashTable.contains(rightRow.evaluate(right).hashCode()))
-        .flatMap(rightRow => {
-          val rightValue = rightRow.evaluate(right)
-          hashTable(rightValue.hashCode())
+  def rightOuterJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
+    join(other, left, right, rightOuter = true)
+
+  private def join(
+    other: Embeddings,
+    left: Expr,
+    right: Expr,
+    rightOuter: Boolean)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+
+    val hashTable = this.rows.map(row => row.evaluate(left).hashCode() -> row)
+      .toSeq
+      .groupBy(_._1)
+
+    val newData = other.rows
+      .filter(rightRow => rightOuter || hashTable.contains(rightRow.evaluate(right).hashCode()))
+      .flatMap(rightRow => {
+        val rightValue = rightRow.evaluate(right)
+        val leftValuesOpt = hashTable.get(rightValue.hashCode())
+
+        val newRows = leftValuesOpt match {
+          case Some(leftValues) => leftValues
             .map(_._2)
             .filter(leftRow => leftRow.evaluate(left) == rightValue) // hash collision check
             .map(leftRow => leftRow ++ rightRow)
-        }).toList
+          case None if rightOuter => Seq(rightRow)
+          case None => Seq.empty[CypherMap]
+        }
+        newRows
 
-      copy(data = newData)
-    }
+        //        val foo = hashTable(rightValue.hashCode())
+        //          .map(_._2)
+        //          .filter(leftRow => leftRow.evaluate(left) == rightValue) // hash collision check
+        //          .map(leftRow => leftRow ++ rightRow)
+        //        foo
+      }).toList
+
+    copy(data = newData)
   }
 }

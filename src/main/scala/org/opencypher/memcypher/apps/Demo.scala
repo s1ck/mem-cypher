@@ -27,12 +27,12 @@ object Demo extends App {
   PrintTimings.set()
   PrintPhysicalPlan.set()
 
-  val query = "MATCH (n:Person) RETURN collect(n.age)"
+  val query =
+    s"""|MATCH (n:Person)-[foo:KNOWS]->(m:Person)
+        |OPTIONAL MATCH (m)<-[:HAS_MODERATOR]-(o:Forum)
+        |RETURN n, m, o""".stripMargin
 
-  logger.info(
-    s"""Executing query:
-       |$query
-       """.stripMargin)
+  logger.info(s"Executing query: $query")
 
   implicit val memCypher: MemCypherSession = MemCypherSession.create
 

@@ -131,7 +131,7 @@ case class Drop(
         .filter(records.columns.contains)
         .toSet
     logger.info(s"Dropping columns: ${dropColumns.mkString("[", ", ", "]")}")
-    val newData = records.data.drop(dropColumns)(header, context)
+    val newData = if (dropColumns.isEmpty) records.data else records.data.drop(dropColumns)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
