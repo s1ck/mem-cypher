@@ -47,13 +47,18 @@ final case class Scan(in: MemOperator, v: Var, header: RecordHeader) extends Una
   }
 }
 
-final case class Alias(in: MemOperator, expr: Expr, alias: Var, header: RecordHeader) extends UnaryOperator {
+final case class Alias(in: MemOperator, tuples: Seq[(Expr, Var)], header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     val data = prev.records.data
-    val newColumn = header.slotFor(alias).columnName
-    logger.info(s"Projecting $expr to alias column: $newColumn")
-    val newData = data.project(expr, newColumn)(header, context)
+
+    val newData = tuples.foldLeft(data) {
+      case (currentData, (expr, alias)) =>
+        val newColumn = header.slotFor(alias).columnName
+        logger.info(s"Projecting $expr to alias column: $newColumn")
+        currentData.project(expr, newColumn)(header, context)
+    }
+
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
