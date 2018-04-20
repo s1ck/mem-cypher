@@ -91,14 +91,16 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
     in: MemOperator,
     fields: Set[Var]): MemOperator = Distinct(in,fields)
 
-
   override def planAggregate(
     in: MemOperator,
     group: Set[Var],
     aggregations: Set[(Var, Aggregator)],
-    header: RecordHeader): MemOperator = Aggregate(in, group, aggregations, header)
+    header: RecordHeader): MemOperator = Aggregate(in, group, aggregations)
 
-  override def planDrop(in: MemOperator, dropFields: Seq[Expr], header: RecordHeader): MemOperator = ???
+  override def planDrop(
+    in: MemOperator,
+    dropFields: Seq[Expr],
+    header: RecordHeader): MemOperator = Drop(in, dropFields)
 
   override def planEmptyRecords(in: MemOperator, header: RecordHeader): MemOperator = ???
 

@@ -27,7 +27,7 @@ object CypherMapOps {
 
   implicit class RichCypherMap(map: CypherMap) {
 
-    def filterKeys(keys: Seq[String]): CypherMap = map.value.filterKeys(keys.contains)
+    def filterKeys(keys: Set[String]): CypherMap = map.value.filterKeys(keys.contains)
 
     def evaluate(expr: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): CypherValue = {
 

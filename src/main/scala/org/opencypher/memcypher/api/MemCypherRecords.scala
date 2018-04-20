@@ -78,13 +78,19 @@ case class Embeddings(data: List[CypherMap]) {
   def filter(expr: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
     copy(data = data.filter(row => row.evaluate(expr).as[Boolean].getOrElse(false)))
 
-  def select(fields: Seq[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
+  def select(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
     copy(data = data.map(row => row.filterKeys(fields)))
 
   def distinct(fields: Set[Var])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
     val columnNames = fields.map(_.name)
-    copy(data = select(columnNames.toSeq)(header, context).data.distinct)
+    copy(data = select(columnNames)(header, context).data.distinct)
   }
+
+  def drop(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+    val keep = columns -- fields
+    copy(data = data.map(_.filterKeys(keep)))
+  }
+
 
   def group(by: Set[Var], aggregations: Set[(Var, Aggregator)])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
     val groupKeys = by.toSeq
