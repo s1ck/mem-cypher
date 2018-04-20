@@ -52,7 +52,7 @@ final case class Join(
       case other => other
     }
 
-    val newData = left.records.data.hashJoin(right.records.data, leftId, rightId)(header, context)
+    val newData = left.records.data.join(right.records.data, leftId, rightId, joinType)(header, context)
     MemPhysicalResult(MemRecords(newData, header), left.workingGraph, left.workingGraphName)
   }
 
