@@ -12,15 +12,16 @@
  * limitations under the License.
  */
 package org.opencypher.memcypher.impl.planning
+
 import org.opencypher.memcypher.api.MemRecords
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.types.CTInteger
 import org.opencypher.okapi.impl.exception.NotImplementedException
 import org.opencypher.okapi.ir.api.expr.{Expr, Id, Var}
-import org.opencypher.okapi.relational.impl.physical.JoinType
+import org.opencypher.okapi.relational.impl.physical.{InnerJoin, JoinType, LeftOuterJoin, RightOuterJoin}
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
-private [memcypher] abstract class BinaryOperator extends MemOperator {
+private[memcypher] abstract class BinaryOperator extends MemOperator {
 
   def left: MemOperator
 
@@ -44,15 +45,21 @@ final case class Join(
 
     val (leftExpr, rightExpr) = joinExprs.head
     val leftId = leftExpr match {
-      case v:Var => Id(v)(CTInteger)
+      case v: Var => Id(v)(CTInteger)
       case other => other
     }
     val rightId = rightExpr match {
-      case v:Var => Id(v)(CTInteger)
+      case v: Var => Id(v)(CTInteger)
       case other => other
     }
 
-    val newData = left.records.data.hashJoin(right.records.data, leftId, rightId)(header, context)
+    val newData = joinType match {
+      case InnerJoin => left.records.data.innerJoin(right.records.data, leftId, rightId)(header, context)
+      case RightOuterJoin => left.records.data.rightOuterJoin(right.records.data, leftId, rightId)(header, context)
+      case LeftOuterJoin => right.records.data.rightOuterJoin(left.records.data, rightId, leftId)(header, context)
+      case other => throw NotImplementedException(s"Unsupported JoinType: $other")
+    }
+
     MemPhysicalResult(MemRecords(newData, header), left.workingGraph, left.workingGraphName)
   }
 

@@ -24,6 +24,7 @@ import org.opencypher.okapi.impl.exception.NotImplementedException
 import org.opencypher.okapi.impl.table.RecordsPrinter
 import org.opencypher.okapi.impl.util.PrintOptions
 import org.opencypher.okapi.ir.api.expr._
+import org.opencypher.okapi.relational.impl.physical.JoinType
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
@@ -72,25 +73,24 @@ case class Embeddings(data: List[CypherMap]) {
 
   def rows: Iterator[CypherMap] = data.iterator
 
+  // ---------------
+  // Unary operators
+  // ---------------
+
+  def select(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
+    copy(data = data.map(row => row.filterKeys(fields)))
+
   def project(expr: Expr, toKey: String)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
     copy(data = data.map(row => row.updated(toKey, row.evaluate(expr))))
 
   def filter(expr: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
     copy(data = data.filter(row => row.evaluate(expr).as[Boolean].getOrElse(false)))
 
-  def select(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
-    copy(data = data.map(row => row.filterKeys(fields)))
+  def drop(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
+    copy(data = data.map(_.filterKeys(columns -- fields)))
 
-  def distinct(fields: Set[Var])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
-    val columnNames = fields.map(_.name)
-    copy(data = select(columnNames)(header, context).data.distinct)
-  }
-
-  def drop(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
-    val keep = columns -- fields
-    copy(data = data.map(_.filterKeys(keep)))
-  }
-
+  def distinct(fields: Set[Var])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
+    copy(data = select(fields.map(_.name))(header, context).data.distinct)
 
   def group(by: Set[Var], aggregations: Set[(Var, Aggregator)])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
     val groupKeys = by.toSeq
@@ -154,42 +154,54 @@ case class Embeddings(data: List[CypherMap]) {
     copy(data = withKeysAndAggregates)
   }
 
+  // ----------------
+  // Binary operators
+  // ----------------
 
-  // O(n * m), where n = |left| and m = |right|
-  def loopJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
-    val newData = rows.flatMap(leftRow => {
-      val leftVal = leftRow.evaluate(left)
-      other.rows
-        .filter(rightRow => leftVal == rightRow.evaluate(right))
-        .map(rightRow => leftRow ++ rightRow)
-    }).toList
-
-    copy(data = newData)
+  def innerJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+    if (this.data.size < other.data.size) {
+      join(other, left, right, rightOuter = false)
+    } else {
+      other.join(this, right, left, rightOuter = false)
+    }
   }
 
-  // O(n * log(m)), where n = |left| and m = |right|
-  def hashJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
-    if (this.data.size > other.data.size) {
-      other.hashJoin(this, right, left)
-    } else {
-      val
-      hashTable = this.rows.map(row => row.evaluate(left).hashCode() -> row)
-        .toSeq
-        .groupBy(_._1)
+  def rightOuterJoin(other: Embeddings, left: Expr, right: Expr)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
+    join(other, left, right, rightOuter = true)
 
-      val newData = other.rows
-        .filter(rightRow => hashTable.contains(rightRow.evaluate(right).hashCode()))
-        .flatMap(rightRow => {
-          val rightValue = rightRow.evaluate(right)
-          hashTable(rightValue.hashCode())
+  private def join(
+    other: Embeddings,
+    left: Expr,
+    right: Expr,
+    rightOuter: Boolean)(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+
+    val hashTable = this.rows.map(row => row.evaluate(left).hashCode() -> row)
+      .toSeq
+      .groupBy(_._1)
+
+    val newData = other.rows
+      .filter(rightRow => rightOuter || hashTable.contains(rightRow.evaluate(right).hashCode()))
+      .flatMap(rightRow => {
+        val rightValue = rightRow.evaluate(right)
+        val leftValuesOpt = hashTable.get(rightValue.hashCode())
+
+        val newRows = leftValuesOpt match {
+          case Some(leftValues) => leftValues
             .map(_._2)
             .filter(leftRow => leftRow.evaluate(left) == rightValue) // hash collision check
             .map(leftRow => leftRow ++ rightRow)
-        }).toList
+          case None if rightOuter => Seq(rightRow)
+          case None => Seq.empty[CypherMap]
+        }
+        newRows
 
-      copy(data = newData)
-    }
+        //        val foo = hashTable(rightValue.hashCode())
+        //          .map(_._2)
+        //          .filter(leftRow => leftRow.evaluate(left) == rightValue) // hash collision check
+        //          .map(leftRow => leftRow ++ rightRow)
+        //        foo
+      }).toList
+
+    copy(data = newData)
   }
 }
-
-
