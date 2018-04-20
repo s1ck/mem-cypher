@@ -18,19 +18,20 @@ import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession}
 import org.opencypher.okapi.api.configuration.Configuration.PrintTimings
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
-import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.PrintPhysicalPlan
+import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.{PrintFlatPlan, PrintPhysicalPlan}
 
 object Demo extends App {
 
   val logger = Logger("Demo")
 
   PrintTimings.set()
+  PrintFlatPlan.set()
   PrintPhysicalPlan.set()
 
   val query =
-    s"""|MATCH (n:Person)-[foo:KNOWS]->(m:Person)
-        |OPTIONAL MATCH (m)<-[:HAS_MODERATOR]-(o:Forum)
-        |RETURN n, m, o""".stripMargin
+    s"""|MATCH (n:Person)
+        |RETURN n.city, n.age
+        |ORDER BY n.city ASC, n.age DESC""".stripMargin
 
   logger.info(s"Executing query: $query")
 
