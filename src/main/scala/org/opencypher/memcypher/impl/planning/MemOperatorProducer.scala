@@ -102,11 +102,17 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
     dropFields: Seq[Expr],
     header: RecordHeader): MemOperator = Drop(in, dropFields)
 
+  override def planOrderBy(
+    in: MemOperator,
+    sortItems: Seq[SortItem[Expr]],
+    header: RecordHeader): MemOperator = OrderBy(in, sortItems)
+
+  override def planRemoveAliases(
+    in: MemOperator,
+    aliases: Set[(ProjectedField, ProjectedExpr)],
+    header: RecordHeader): MemOperator = RemoveAliases(in, aliases, header)
+
   override def planEmptyRecords(in: MemOperator, header: RecordHeader): MemOperator = ???
-
-  override def planRemoveAliases(in: MemOperator, aliases: Set[(ProjectedField, ProjectedExpr)], header: RecordHeader): MemOperator = ???
-
-  override def planOrderBy(in: MemOperator, sortItems: Seq[SortItem[Expr]], header: RecordHeader): MemOperator = ???
 
   override def planInitVarExpand(in: MemOperator, source: Var, edgeList: Var, target: Var, header: RecordHeader): MemOperator = ???
 

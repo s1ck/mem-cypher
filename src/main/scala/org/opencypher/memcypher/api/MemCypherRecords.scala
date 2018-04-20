@@ -23,6 +23,7 @@ import org.opencypher.okapi.api.value.CypherValue.{CypherInteger, CypherList, Cy
 import org.opencypher.okapi.impl.exception.NotImplementedException
 import org.opencypher.okapi.impl.table.RecordsPrinter
 import org.opencypher.okapi.impl.util.PrintOptions
+import org.opencypher.okapi.ir.api.block.{Asc, Desc, SortItem}
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
@@ -153,6 +154,20 @@ case class Embeddings(data: List[CypherMap]) {
     copy(data = withKeysAndAggregates)
   }
 
+  def orderBy(sortItems: Seq[SortItem[Expr]])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+    val newData = sortItems.foldLeft(data) {
+      case (currentData, sortItem) =>
+        sortItem match {
+          case Asc(inner) =>
+            currentData.sortWith((l, r) => l.evaluate(inner) < r.evaluate(inner))
+
+          case Desc(inner) =>
+            currentData.sortWith((l, r) => l.evaluate(inner) > r.evaluate(inner))
+        }
+    }
+    copy(data = newData)
+  }
+
   // ----------------
   // Binary operators
   // ----------------
@@ -192,6 +207,19 @@ case class Embeddings(data: List[CypherMap]) {
         }
       }).toList
 
+    copy(data = newData)
+  }
+
+  // --------------
+  // Helper methods
+  // --------------
+
+  def withColumnsRenamed(renamings: Map[String, String]): Embeddings = {
+    val newData = data.map(row => row.keys.foldLeft(CypherMap.empty) {
+      case (currentRow, key) =>
+        val newKey = renamings.getOrElse(key, key)
+        currentRow.updated(newKey, row(key))
+    })
     copy(data = newData)
   }
 }

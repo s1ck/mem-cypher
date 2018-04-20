@@ -13,7 +13,7 @@
  */
 package org.opencypher.memcypher.impl.table
 
-import org.opencypher.okapi.ir.api.expr.Property
+import org.opencypher.okapi.ir.api.expr.{Expr, Property}
 import org.opencypher.okapi.relational.impl.table.{FieldSlotContent, ProjectedExpr, RecordSlot, SlotContent}
 
 object RecordHeaderUtils {
@@ -27,4 +27,18 @@ object RecordHeaderUtils {
     }
   }
 
+  implicit class RichRecordSlotContent(content: SlotContent) {
+    def columnName: String = content match {
+      case fieldContent: FieldSlotContent => fieldContent.field.name
+      case ProjectedExpr(p: Property) => p.withoutType + p.cypherType.material.name
+      case ProjectedExpr(expr) => expr.withoutType
+    }
+  }
+
+  implicit class RichExpression(expr: Expr) {
+    def columnName: String = expr match {
+      case _: Property => expr.withoutType + expr.cypherType.material.name
+      case _ => expr.withoutType
+    }
+  }
 }
