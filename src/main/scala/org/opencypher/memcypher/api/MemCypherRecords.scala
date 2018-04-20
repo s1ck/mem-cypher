@@ -24,7 +24,6 @@ import org.opencypher.okapi.impl.exception.NotImplementedException
 import org.opencypher.okapi.impl.table.RecordsPrinter
 import org.opencypher.okapi.impl.util.PrintOptions
 import org.opencypher.okapi.ir.api.expr._
-import org.opencypher.okapi.relational.impl.physical.JoinType
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
@@ -183,9 +182,7 @@ case class Embeddings(data: List[CypherMap]) {
       .filter(rightRow => rightOuter || hashTable.contains(rightRow.evaluate(right).hashCode()))
       .flatMap(rightRow => {
         val rightValue = rightRow.evaluate(right)
-        val leftValuesOpt = hashTable.get(rightValue.hashCode())
-
-        val newRows = leftValuesOpt match {
+        hashTable.get(rightValue.hashCode()) match {
           case Some(leftValues) => leftValues
             .map(_._2)
             .filter(leftRow => leftRow.evaluate(left) == rightValue) // hash collision check
@@ -193,13 +190,6 @@ case class Embeddings(data: List[CypherMap]) {
           case None if rightOuter => Seq(rightRow)
           case None => Seq.empty[CypherMap]
         }
-        newRows
-
-        //        val foo = hashTable(rightValue.hashCode())
-        //          .map(_._2)
-        //          .filter(leftRow => leftRow.evaluate(left) == rightValue) // hash collision check
-        //          .map(leftRow => leftRow ++ rightRow)
-        //        foo
       }).toList
 
     copy(data = newData)
