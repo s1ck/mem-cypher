@@ -15,14 +15,13 @@ package org.opencypher.memcypher.impl.value
 
 import com.typesafe.scalalogging.Logger
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
-import org.opencypher.okapi.api.value.CypherValue.{CypherList, CypherMap, CypherNode, CypherValue}
+import org.opencypher.memcypher.impl.MemRuntimeContext
+import org.opencypher.memcypher.impl.value.CypherValueOps._
+import org.opencypher.okapi.api.value.CypherValue.{CypherList, CypherMap, CypherValue}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.PropertyKey
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
-import org.opencypher.memcypher.impl.MemRuntimeContext
-import org.opencypher.memcypher.impl.value.CypherValueOps._
-import org.opencypher.okapi.api.types.CTNode
 
 object CypherMapOps {
 

@@ -15,14 +15,16 @@ package org.opencypher.memcypher.api
 
 import org.opencypher.memcypher.impl.MemRuntimeContext
 import org.opencypher.memcypher.impl.value.CypherMapOps._
+import org.opencypher.memcypher.impl.value.CypherValueOps._
 import org.opencypher.okapi.api.table.{CypherRecords, CypherRecordsCompanion}
 import org.opencypher.okapi.api.types.CypherType
 import org.opencypher.okapi.api.types.CypherType._
-import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherValue}
+import org.opencypher.okapi.api.value.CypherValue.{CypherInteger, CypherList, CypherMap, CypherValue}
+import org.opencypher.okapi.impl.exception.NotImplementedException
 import org.opencypher.okapi.impl.table.RecordsPrinter
 import org.opencypher.okapi.impl.util.PrintOptions
-import org.opencypher.okapi.ir.api.expr.{Expr, Var}
-import org.opencypher.okapi.relational.impl.table.{ColumnName, RecordHeader}
+import org.opencypher.okapi.ir.api.expr._
+import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
 
@@ -81,7 +83,69 @@ case class Embeddings(data: List[CypherMap]) {
 
   def distinct(fields: Set[Var])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
     val columnNames = fields.map(_.name)
-    copy(data = select(columnNames.toSeq)(header,context).data.distinct)
+    copy(data = select(columnNames.toSeq)(header, context).data.distinct)
+  }
+
+  def group(by: Set[Var], aggregations: Set[(Var, Aggregator)])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+    val groupKeys = by.toSeq
+    val groupedData = data
+      .groupBy(row => groupKeys.map(row.evaluate))
+
+    val withAggregates = groupedData.mapValues {
+      case (values) => aggregations.foldLeft(CypherMap.empty) {
+        case (current, (Var(to), agg)) =>
+          agg match {
+            case Count(inner, distinct) =>
+              val evaluated = values
+                .map(_.evaluate(inner))
+                .filterNot(_.isNull)
+              val toCount = if (distinct) evaluated.distinct else evaluated
+              current.updated(to, CypherInteger(toCount.size))
+
+            case CountStar(_) =>
+              current.updated(to, CypherInteger(values.size))
+
+            case Sum(inner) =>
+              val sum = values
+                .map(_.evaluate(inner))
+                .filterNot(_.isNull)
+                .reduce(_ + _)
+              current.updated(to, sum)
+
+            case Min(inner) =>
+              val min = values
+                .map(_.evaluate(inner))
+                .sortWith(_ < _)
+                .head
+              current.updated(to, min)
+
+            case Max(inner) =>
+              val max = values
+                .map(_.evaluate(inner))
+                .sortWith(_ > _)
+                .head
+              current.updated(to, max)
+
+            case Collect(inner, distinct) =>
+              val coll = values
+                .map(_.evaluate(inner))
+                .filterNot(_.isNull)
+              val toCollect = if (distinct) coll.distinct else coll
+              current.updated(to, CypherList(toCollect))
+
+            case other => throw NotImplementedException(s"Aggregation $other not yet supported")
+          }
+      }
+    }
+
+    val withKeysAndAggregates = withAggregates.map {
+      case (groupValues, aggregateMap) =>
+        groupKeys.zip(groupValues).foldLeft(aggregateMap) {
+          case (current, (Var(groupKey), groupValue)) => current.updated(groupKey, groupValue)
+        }
+    }.toList
+
+    copy(data = withKeysAndAggregates)
   }
 
 

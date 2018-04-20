@@ -18,10 +18,10 @@ import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
-import org.opencypher.okapi.ir.api.expr.{Expr, Var}
+import org.opencypher.okapi.ir.api.expr.{Aggregator, Expr, Var}
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
-private [memcypher] abstract class UnaryOperator extends MemOperator {
+private[memcypher] abstract class UnaryOperator extends MemOperator {
 
   def in: MemOperator
 
@@ -98,8 +98,21 @@ case class Distinct(in: MemOperator, fields: Set[Var]) extends UnaryOperator wit
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Distinct on ${fields.mkString(",")}")
-    val newData = prev.records.data.distinct(fields)(header,context)
-    MemPhysicalResult(MemRecords.create(newData, header),prev.workingGraph,prev.workingGraphName)
+    val newData = prev.records.data.distinct(fields)(header, context)
+    MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
+  }
+}
+
+case class Aggregate(
+  in: MemOperator,
+  groupBy: Set[Var],
+  aggregations: Set[(Var, Aggregator)],
+  header: RecordHeader) extends UnaryOperator {
+
+  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    logger.info(s"Grouping on ${groupBy.mkString(",")}, aggregating on ${aggregations.mkString(",")}")
+    val newData = prev.records.data.group(groupBy, aggregations)(header, context)
+    MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
 
