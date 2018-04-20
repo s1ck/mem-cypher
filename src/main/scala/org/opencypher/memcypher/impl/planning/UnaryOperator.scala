@@ -19,7 +19,7 @@ import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.expr.{Aggregator, Expr, Var}
-import org.opencypher.okapi.relational.impl.table.RecordHeader
+import org.opencypher.okapi.relational.impl.table.{ColumnName, RecordHeader}
 
 private[memcypher] abstract class UnaryOperator extends MemOperator {
 
@@ -67,7 +67,7 @@ final case class SelectFields(in: MemOperator, fields: Seq[Var], header: RecordH
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Selecting fields: ${fields.mkString(",")}")
-    val columnNames = fields.map(header.slotFor).map(_.columnName)
+    val columnNames = fields.map(header.slotFor).map(_.columnName).toSet
     val newData = prev.records.data.select(columnNames)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
@@ -111,8 +111,7 @@ case class Distinct(in: MemOperator, fields: Set[Var]) extends UnaryOperator wit
 case class Aggregate(
   in: MemOperator,
   groupBy: Set[Var],
-  aggregations: Set[(Var, Aggregator)],
-  header: RecordHeader) extends UnaryOperator {
+  aggregations: Set[(Var, Aggregator)]) extends UnaryOperator with InheritedHeader {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Grouping on ${groupBy.mkString(",")}, aggregating on ${aggregations.mkString(",")}")
@@ -121,3 +120,18 @@ case class Aggregate(
   }
 }
 
+case class Drop(
+  in: MemOperator,
+  dropFields: Seq[Expr]) extends UnaryOperator with InheritedHeader {
+
+  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    val records = prev.records
+    val dropColumns = dropFields
+        .map(ColumnName.of)
+        .filter(records.columns.contains)
+        .toSet
+    logger.info(s"Dropping columns: ${dropColumns.mkString("[", ", ", "]")}")
+    val newData = records.data.drop(dropColumns)(header, context)
+    MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
+  }
+}
