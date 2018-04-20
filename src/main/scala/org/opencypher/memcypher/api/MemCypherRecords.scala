@@ -19,7 +19,7 @@ import org.opencypher.memcypher.impl.value.CypherValueOps._
 import org.opencypher.okapi.api.table.{CypherRecords, CypherRecordsCompanion}
 import org.opencypher.okapi.api.types.CypherType
 import org.opencypher.okapi.api.types.CypherType._
-import org.opencypher.okapi.api.value.CypherValue.{CypherInteger, CypherMap, CypherValue}
+import org.opencypher.okapi.api.value.CypherValue.{CypherInteger, CypherList, CypherMap, CypherValue}
 import org.opencypher.okapi.impl.exception.NotImplementedException
 import org.opencypher.okapi.impl.table.RecordsPrinter
 import org.opencypher.okapi.impl.util.PrintOptions
@@ -98,7 +98,7 @@ case class Embeddings(data: List[CypherMap]) {
             case Count(inner, distinct) =>
               val evaluated = values
                 .map(_.evaluate(inner))
-                .filter(!_.isNull)
+                .filterNot(_.isNull)
               val toCount = if (distinct) evaluated.distinct else evaluated
               current.updated(to, CypherInteger(toCount.size))
 
@@ -108,7 +108,7 @@ case class Embeddings(data: List[CypherMap]) {
             case Sum(inner) =>
               val sum = values
                 .map(_.evaluate(inner))
-                .filter(!_.isNull)
+                .filterNot(_.isNull)
                 .reduce(_ + _)
               current.updated(to, sum)
 
@@ -125,6 +125,13 @@ case class Embeddings(data: List[CypherMap]) {
                 .sortWith(_ > _)
                 .head
               current.updated(to, max)
+
+            case Collect(inner, distinct) =>
+              val coll = values
+                .map(_.evaluate(inner))
+                .filterNot(_.isNull)
+              val toCollect = if (distinct) coll.distinct else coll
+              current.updated(to, CypherList(toCollect))
 
             case other => throw NotImplementedException(s"Aggregation $other not yet supported")
           }
