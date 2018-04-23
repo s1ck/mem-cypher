@@ -64,3 +64,10 @@ final case class Join(
   }
 
 }
+
+final case class CartesianProduct(left: MemOperator, right: MemOperator, header: RecordHeader) extends BinaryOperator {
+  override def executeBinary(left: MemPhysicalResult, right: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    val newData = left.records.data.cartesianProduct(right.records.data)
+    MemPhysicalResult(MemRecords(newData, header), left.workingGraph, left.workingGraphName)
+  }
+}
