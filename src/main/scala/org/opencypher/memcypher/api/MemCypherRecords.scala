@@ -33,7 +33,7 @@ object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
 
   def create(embeddings: Embeddings, header: RecordHeader): MemRecords = MemRecords(embeddings, header)
 
-  override def unit()(implicit session: MemCypherSession): MemRecords = MemRecords(Embeddings.empty, RecordHeader.empty)
+  override def unit()(implicit session: MemCypherSession): MemRecords = MemRecords(Embeddings.unit, RecordHeader.empty)
 }
 
 case class MemRecords(
@@ -58,10 +58,9 @@ case class MemRecords(
   override def collect: Array[CypherMap] = iterator.toArray
 }
 
-
 object Embeddings {
-
   def empty: Embeddings = Embeddings(List.empty)
+  def unit: Embeddings = Embeddings(List(CypherMap()))
 }
 
 case class Embeddings(data: List[CypherMap]) {
