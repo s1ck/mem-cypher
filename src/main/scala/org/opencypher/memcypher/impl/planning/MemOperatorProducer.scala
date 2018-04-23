@@ -112,6 +112,11 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
     aliases: Set[(ProjectedField, ProjectedExpr)],
     header: RecordHeader): MemOperator = RemoveAliases(in, aliases, header)
 
+  override def planCartesianProduct(
+    lhs: MemOperator,
+    rhs: MemOperator,
+    header: RecordHeader): MemOperator = CartesianProduct(lhs, rhs, header)
+
   override def planEmptyRecords(in: MemOperator, header: RecordHeader): MemOperator = ???
 
   override def planInitVarExpand(in: MemOperator, source: Var, edgeList: Var, target: Var, header: RecordHeader): MemOperator = ???
@@ -119,8 +124,6 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
   override def planSkip(in: MemOperator, expr: Expr, header: RecordHeader): MemOperator = ???
 
   override def planLimit(in: MemOperator, expr: Expr, header: RecordHeader): MemOperator = ???
-
-  override def planCartesianProduct(lhs: MemOperator, rhs: MemOperator, header: RecordHeader): MemOperator = ???
 
   override def planExistsSubQuery(lhs: MemOperator, rhs: MemOperator, targetField: Var, header: RecordHeader): MemOperator = ???
 

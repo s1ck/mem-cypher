@@ -210,6 +210,15 @@ case class Embeddings(data: List[CypherMap]) {
     copy(data = newData)
   }
 
+  def cartesianProduct(other: Embeddings): Embeddings = {
+    val newData = for {
+      left <- data
+      right <- other.data
+    } yield left ++ right
+
+    copy(data = newData)
+  }
+
   // --------------
   // Helper methods
   // --------------
