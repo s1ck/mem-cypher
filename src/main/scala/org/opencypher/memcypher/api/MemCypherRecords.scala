@@ -218,6 +218,8 @@ case class Embeddings(data: List[CypherMap]) {
     copy(data = newData)
   }
 
+  def unionAll(other: Embeddings): Embeddings = copy(data ++ other.data)
+  
   // --------------
   // Helper methods
   // --------------
