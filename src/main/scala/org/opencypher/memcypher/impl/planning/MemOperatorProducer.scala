@@ -117,6 +117,10 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
     rhs: MemOperator,
     header: RecordHeader): MemOperator = CartesianProduct(lhs, rhs, header)
 
+  override def planTabularUnionAll(
+    lhs: MemOperator,
+    rhs: MemOperator): MemOperator = TabularUnionAll(lhs, rhs)
+
   override def planEmptyRecords(in: MemOperator, header: RecordHeader): MemOperator = ???
 
   override def planInitVarExpand(in: MemOperator, source: Var, edgeList: Var, target: Var, header: RecordHeader): MemOperator = ???
@@ -134,8 +138,6 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
   override def planFromGraph(in: MemOperator, graph: LogicalCatalogGraph): MemOperator = ???
 
   override def planConstructGraph(table: MemOperator, onGraph: MemOperator, construct: LogicalPatternGraph): MemOperator = ???
-
-  override def planTabularUnionAll(lhs: MemOperator, rhs: MemOperator): MemOperator = ???
 
   override def planGraphUnionAll(graphs: List[MemOperator], qgn: QualifiedGraphName): MemOperator = ???
 }

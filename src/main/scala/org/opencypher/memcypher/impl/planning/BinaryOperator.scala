@@ -71,3 +71,10 @@ final case class CartesianProduct(left: MemOperator, right: MemOperator, header:
     MemPhysicalResult(MemRecords(newData, header), left.workingGraph, left.workingGraphName)
   }
 }
+
+final case class TabularUnionAll(left: MemOperator, right: MemOperator) extends BinaryOperator with InheritedHeader {
+  override def executeBinary(left: MemPhysicalResult, right: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    val newData = left.records.data.tabularUnionAll(right.records.data)
+    MemPhysicalResult(MemRecords(newData, header), left.workingGraph, left.workingGraphName)
+  }
+}
