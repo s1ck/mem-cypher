@@ -218,12 +218,8 @@ case class Embeddings(data: List[CypherMap]) {
     copy(data = newData)
   }
 
-  def tabularUnionAll(other: Embeddings): Embeddings = {
-    val newData = data ++ other.data
-
-    copy(data = newData)
-  }
-
+  def unionAll(other: Embeddings): Embeddings = copy(data ++ other.data)
+  
   // --------------
   // Helper methods
   // --------------
