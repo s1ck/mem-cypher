@@ -20,7 +20,8 @@ import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.block.SortItem
 import org.opencypher.okapi.ir.api.expr.{Aggregator, Expr, Var}
-import org.opencypher.okapi.relational.impl.table.{ProjectedExpr, ProjectedField, RecordHeader}
+import org.opencypher.okapi.relational.impl.table.{FieldSlotContent, ProjectedExpr, ProjectedField, RecordHeader}
+import org.opencypher.okapi.ir.impl.syntax.ExprSyntax._
 
 private[memcypher] abstract class UnaryOperator extends MemOperator {
 
@@ -68,7 +69,24 @@ final case class SelectFields(in: MemOperator, fields: Seq[Var], header: RecordH
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Selecting fields: ${fields.mkString(",")}")
-    val columnNames = fields.map(header.slotFor).map(_.columnName).toSet
+
+    // TODO: remove this when https://github.com/opencypher/cypher-for-apache-spark/issues/412 is fixed
+    val fieldIndices = fields.zipWithIndex.toMap
+
+    val groupedSlots = header.slots.sortBy {
+      _.content match {
+        case content: FieldSlotContent =>
+          fieldIndices.getOrElse(content.field, Int.MaxValue)
+        case content@ProjectedExpr(expr) =>
+          val deps = expr.dependencies
+          deps.headOption
+            .filter(_ => deps.size == 1)
+            .flatMap(fieldIndices.get)
+            .getOrElse(Int.MaxValue)
+      }
+    }
+
+    val columnNames = groupedSlots.map(_.columnName).toSet
     val newData = prev.records.data.select(columnNames)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }

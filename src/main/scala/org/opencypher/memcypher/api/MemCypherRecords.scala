@@ -49,13 +49,17 @@ case class MemRecords(
     case None => Map.empty
   }
 
-  override def iterator: Iterator[CypherMap] = data.rows
+  override def iterator: Iterator[CypherMap] = toCypherMap.iterator
 
   override def size: Long = rows.size
 
   override def show(implicit options: PrintOptions): Unit = RecordsPrinter.print(this)
 
   override def collect: Array[CypherMap] = iterator.toArray
+
+  def toCypherMap: Seq[CypherMap] = {
+    data.data.map(row => row.nest(header))
+  }
 }
 
 object Embeddings {
@@ -97,50 +101,51 @@ case class Embeddings(data: Seq[CypherMap]) {
       .groupBy(row => groupKeys.map(row.evaluate))
 
     val withAggregates = groupedData.mapValues {
-      case (values) => aggregations.foldLeft(CypherMap.empty) {
-        case (current, (Var(to), agg)) =>
-          agg match {
-            case Count(inner, distinct) =>
-              val evaluated = values
-                .map(_.evaluate(inner))
-                .filterNot(_.isNull)
-              val toCount = if (distinct) evaluated.distinct else evaluated
-              current.updated(to, CypherInteger(toCount.size))
+      values =>
+        aggregations.foldLeft(CypherMap.empty) {
+          case (current, (Var(to), agg)) =>
+            agg match {
+              case Count(inner, distinct) =>
+                val evaluated = values
+                  .map(_.evaluate(inner))
+                  .filterNot(_.isNull)
+                val toCount = if (distinct) evaluated.distinct else evaluated
+                current.updated(to, CypherInteger(toCount.size))
 
-            case CountStar(_) =>
-              current.updated(to, CypherInteger(values.size))
+              case CountStar(_) =>
+                current.updated(to, CypherInteger(values.size))
 
-            case Sum(inner) =>
-              val sum = values
-                .map(_.evaluate(inner))
-                .filterNot(_.isNull)
-                .reduce(_ + _)
-              current.updated(to, sum)
+              case Sum(inner) =>
+                val sum = values
+                  .map(_.evaluate(inner))
+                  .filterNot(_.isNull)
+                  .reduce(_ + _)
+                current.updated(to, sum)
 
-            case Min(inner) =>
-              val min = values
-                .map(_.evaluate(inner))
-                .sortWith(_ < _)
-                .head
-              current.updated(to, min)
+              case Min(inner) =>
+                val min = values
+                  .map(_.evaluate(inner))
+                  .sortWith(_ < _)
+                  .head
+                current.updated(to, min)
 
-            case Max(inner) =>
-              val max = values
-                .map(_.evaluate(inner))
-                .sortWith(_ > _)
-                .head
-              current.updated(to, max)
+              case Max(inner) =>
+                val max = values
+                  .map(_.evaluate(inner))
+                  .sortWith(_ > _)
+                  .head
+                current.updated(to, max)
 
-            case Collect(inner, distinct) =>
-              val coll = values
-                .map(_.evaluate(inner))
-                .filterNot(_.isNull)
-              val toCollect = if (distinct) coll.distinct else coll
-              current.updated(to, CypherList(toCollect))
+              case Collect(inner, distinct) =>
+                val coll = values
+                  .map(_.evaluate(inner))
+                  .filterNot(_.isNull)
+                val toCollect = if (distinct) coll.distinct else coll
+                current.updated(to, CypherList(toCollect))
 
-            case other => throw NotImplementedException(s"Aggregation $other not yet supported")
-          }
-      }
+              case other => throw NotImplementedException(s"Aggregation $other not yet supported")
+            }
+        }
     }
 
     val withKeysAndAggregates = withAggregates.map {

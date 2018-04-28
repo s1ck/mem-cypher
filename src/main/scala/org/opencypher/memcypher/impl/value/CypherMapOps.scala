@@ -14,12 +14,13 @@
 package org.opencypher.memcypher.impl.value
 
 import com.typesafe.scalalogging.Logger
+import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.impl.MemRuntimeContext
 import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 import org.opencypher.memcypher.impl.value.CypherValueOps._
-import org.opencypher.okapi.api.types.CTNode
-import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherList, CypherMap, CypherString, CypherValue}
-import org.opencypher.okapi.impl.exception.IllegalArgumentException
+import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
+import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherList, CypherMap, CypherString, CypherValue}
+import org.opencypher.okapi.impl.exception.{IllegalArgumentException, UnsupportedOperationException}
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
@@ -90,6 +91,66 @@ object CypherMapOps {
 
         case _ =>
           throw IllegalArgumentException("Supported Cypher Expression", expr.getClass.getSimpleName)
+      }
+    }
+
+    def nest(header: RecordHeader): CypherMap = {
+      val values = header.internalHeader.fields.map { field =>
+        field.name -> nestField(map, field, header)
+      }.toSeq
+
+      CypherMap(values: _*)
+    }
+
+    private def nestField(row: CypherMap, field: Var, header: RecordHeader): CypherValue = {
+      field.cypherType match {
+        case _: CTNode =>
+          nestNode(row, field, header)
+
+        case _: CTRelationship =>
+          nestRel(row, field, header)
+
+        case _ =>
+          row(header.slotFor(field).columnName)
+      }
+    }
+
+    private def nestNode(row: CypherMap, field: Var, header: RecordHeader): CypherValue = {
+      val idValue = row(header.slotFor(field).columnName)
+      idValue match {
+        case id: CypherInteger =>
+          val labels = header
+            .labelSlots(field)
+            .mapValues { s => row(s.columnName).cast[Boolean] }
+            .collect { case (h, b) if b => h.label.name }
+            .toSet
+
+          val properties = header
+            .propertySlots(field)
+            .mapValues { s => row(s.columnName) }
+            .collect { case (p, v) if !v.isNull => p.key.name -> v }
+
+          MemNode(id.value, labels, properties)
+
+        case invalidID => throw UnsupportedOperationException(s"MemNode ID has to be a Long instead of ${invalidID.getClass}")
+      }
+    }
+
+    private def nestRel(row: CypherMap, field: Var, header: RecordHeader): CypherValue = {
+      val idValue = row(header.slotFor(field).columnName)
+      idValue match {
+        case id: CypherInteger =>
+          val source = row(header.sourceNodeSlot(field).columnName).cast[Long]
+          val target = row(header.targetNodeSlot(field).columnName).cast[Long]
+          val relType = row(header.typeSlot(field).columnName).cast[String]
+
+          val properties = header
+            .propertySlots(field)
+            .mapValues { s => row(s.columnName) }
+            .collect { case (p, v) if !v.isNull => p.key.name -> v }
+
+          MemRelationship(id.value, source, target, relType, properties)
+        case invalidID => throw UnsupportedOperationException(s"CAPSRelationship ID has to be a Long instead of ${invalidID.getClass}")
       }
     }
   }

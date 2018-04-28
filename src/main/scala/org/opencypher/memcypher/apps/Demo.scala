@@ -32,7 +32,7 @@ object Demo extends App {
 //    s"""|MATCH (n:Person)
 //        |RETURN n.city, n.age
 //        |ORDER BY n.city ASC, n.age DESC""".stripMargin
-  val query = "MATCH (n) RETURN id(n), labels(n), n.name"
+  val query = "MATCH (n) RETURN n.name"
 
   logger.info(s"Executing query: $query")
 
