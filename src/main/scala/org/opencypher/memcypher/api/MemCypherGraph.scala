@@ -19,9 +19,12 @@ import org.opencypher.okapi.api.graph.PropertyGraph
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types.CypherType._
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
-import org.opencypher.okapi.api.value.CypherValue.CypherMap
-import org.opencypher.okapi.ir.api.expr.Var
-import org.opencypher.okapi.relational.impl.table.RecordHeader
+import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherNull}
+import org.opencypher.okapi.ir.api.expr._
+import org.opencypher.okapi.relational.impl.table.{OpaqueField, ProjectedExpr, RecordHeader}
+import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
+import org.opencypher.okapi.impl.exception.IllegalArgumentException
+
 object MemCypherGraph {
   def empty(implicit session: MemCypherSession): MemCypherGraph = MemCypherGraph(Seq.empty, Seq.empty)(session)
 
@@ -84,8 +87,13 @@ case class MemCypherGraph(
       labelNodeMap.filterKeys(nodeCypherType.labels.subsetOf).values.reduce(_ ++ _)
     }
     val filteredSchema = schemaForNodes(filteredNodes)
-    val targetNodeHeader = RecordHeader.nodeFromSchema(node, filteredSchema)
-    MemRecords.create(filteredNodes.map(node => CypherMap(name -> node)).toList, targetNodeHeader)
+    val targetHeader = RecordHeader.nodeFromSchema(node, filteredSchema)
+    val flattenedNodes = filteredNodes.map(flattenNode(_, targetHeader))
+
+    println(targetHeader.pretty)
+    println(filteredNodes.zip(flattenedNodes).mkString("\n"))
+
+    MemRecords.create(filteredNodes.map(node => CypherMap(name -> node)).toList, targetHeader)
   }
 
   /**
@@ -99,7 +107,36 @@ case class MemCypherGraph(
     val filteredRels = if (relCypherType.types.isEmpty) rels else typeRelMap.filterKeys(relCypherType.types.contains).values.flatten.toSeq
     val filteredSchema = schemaForRels(filteredRels)
     val targetHeader = RecordHeader.relationshipFromSchema(rel, filteredSchema)
+    val targetRels = filteredRels.map(flattenRel(_, targetHeader))
+
+    println(targetHeader.pretty)
+    println(filteredRels.zip(targetRels).mkString("\n"))
+
     MemRecords.create(filteredRels.map(rel => CypherMap(name -> rel)).toList, targetHeader)
+  }
+
+  private def flattenNode(node: MemNode, targetHeader: RecordHeader): CypherMap = {
+    targetHeader.slots.foldLeft(CypherMap.empty) {
+      case (currentMap, slot) => slot.content match {
+        case _ : OpaqueField => currentMap.updated(slot.columnName, node.id)
+        case ProjectedExpr(HasLabel(_, label)) => currentMap.updated(slot.columnName, node.labels.contains(label.name))
+        case ProjectedExpr(Property(_, key)) => currentMap.updated(slot.columnName, node.properties.getOrElse(key.name, CypherNull))
+        case other => throw IllegalArgumentException("supported slot content", other)
+      }
+    }
+  }
+
+  private def flattenRel(rel: MemRelationship, targetHeader: RecordHeader): CypherMap = {
+    targetHeader.slots.foldLeft(CypherMap.empty) {
+      case (currentMap, slot) => slot.content match {
+        case _ : OpaqueField => currentMap.updated(slot.columnName, rel.id)
+        case ProjectedExpr(StartNode(_)) => currentMap.updated(slot.columnName, rel.source)
+        case ProjectedExpr(EndNode(_)) => currentMap.updated(slot.columnName, rel.target)
+        case ProjectedExpr(Type(_)) => currentMap.updated(slot.columnName, rel.relType)
+        case ProjectedExpr(Property(_, key)) => currentMap.updated(slot.columnName, rel.properties.getOrElse(key.name, CypherNull))
+        case other => throw IllegalArgumentException("supported slot content", other)
+      }
+    }
   }
 
   override def unionAll(others: PropertyGraph*): PropertyGraph = ???
