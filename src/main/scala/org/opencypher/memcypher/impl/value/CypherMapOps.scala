@@ -14,12 +14,12 @@
 package org.opencypher.memcypher.impl.value
 
 import com.typesafe.scalalogging.Logger
-import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.impl.MemRuntimeContext
+import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 import org.opencypher.memcypher.impl.value.CypherValueOps._
-import org.opencypher.okapi.api.value.CypherValue.{CypherList, CypherMap, CypherValue}
+import org.opencypher.okapi.api.types.CTNode
+import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherList, CypherMap, CypherString, CypherValue}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
-import org.opencypher.okapi.ir.api.PropertyKey
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
@@ -35,64 +35,36 @@ object CypherMapOps {
 
       expr match {
 
-        case Var(v) =>
-          logger.info(s"Var lookup: `$v` in $map")
-          map.get(v) match {
-            case Some(entity) => entity
-            case None => throw IllegalArgumentException(s"Entity with var $v")
-          }
-
         case Param(name) =>
           logger.info(s"Parameter lookup: `$name` in ${context.parameters}")
           context.parameters(name)
 
-        case Property(v, PropertyKey(k)) =>
-          logger.info(s"Property lookup: `$v.$k` in $map")
-          evaluate(v) match {
-            case MemNode(_, _, props) => props(k)
-            case MemRelationship(_, _, _, _, props) => props(k)
-            case _ => throw IllegalArgumentException("MemNode or MemRelationship", v)
-          }
+        case _: Var | _: Param | _: Property | _: HasLabel | _: Type | _: StartNode | _: EndNode =>
+          logger.info(s"Direct lookup: `$expr` in $map")
+          map(expr.columnName)
 
         case Id(v) =>
           logger.info(s"Id lookup: `$v` in $map")
-          evaluate(v) match {
-            case MemNode(id, _, _) => id
-            case _ => throw IllegalArgumentException("MemNode", v)
-          }
+          evaluate(v)
 
-        case StartNode(r) =>
-          logger.info(s"StartNode lookup: `r` in $map")
-          evaluate(r) match {
-            case rel: MemRelationship => rel.source
-            case _ => throw IllegalArgumentException("MemRelationship", r)
-          }
-
-        case EndNode(r) =>
-          logger.info(s"EndNode lookup: `r` in $map")
-          evaluate(r) match {
-            case rel: MemRelationship => rel.target
-            case _ => throw IllegalArgumentException("MemRelationship", r)
-          }
-
-        case Equals(lhs, rhs) =>
-          logger.info(s"Equals: `$expr` in: $map")
-
-          evaluate(lhs) == evaluate(rhs)
+        case HasType(rel, relType) =>
+          evaluate(Type(rel)()) == CypherString(relType.name)
 
         case Labels(innerExpr) =>
           logger.info(s"Labels: `$innerExpr` in: $map")
-          evaluate(innerExpr) match {
-            case n: MemNode => CypherList(n.labels.toSeq: _*)
-            case _ => throw IllegalArgumentException("MemNode", innerExpr)
-          }
+          val node = Var(innerExpr.columnName)(CTNode)
+          val labelExprs = header.labels(node)
+          val labelNames = labelExprs.map(_.label.name)
+          val labelColumns = labelExprs.map(evaluate)
+          labelNames
+            .zip(labelColumns)
+            .filter(_._2 == CypherBoolean(true))
+            .map(pair => CypherString(pair._1))
+            .toList
 
-        case Type(innerExpr) =>
-          logger.info(s"Type: `$innerExpr` in: $map")
-          evaluate(innerExpr) match {
-            case n: MemRelationship => n.relType
-            case _ => throw IllegalArgumentException("MemRelationship", innerExpr)
-          }
+        case Equals(lhs, rhs) =>
+          logger.info(s"Equals: `$expr` in: $map")
+          evaluate(lhs) == evaluate(rhs)
 
         case Not(innerExpr) =>
           logger.info(s"Not: `$innerExpr` in: $map")

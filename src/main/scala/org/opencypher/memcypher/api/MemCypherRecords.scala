@@ -29,7 +29,7 @@ import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
 
-  def create(rows: List[CypherMap], header: RecordHeader): MemRecords = MemRecords(Embeddings(rows), header)
+  def create(rows: Seq[CypherMap], header: RecordHeader): MemRecords = MemRecords(Embeddings(rows), header)
 
   def create(embeddings: Embeddings, header: RecordHeader): MemRecords = MemRecords(embeddings, header)
 
@@ -63,7 +63,7 @@ object Embeddings {
   def unit: Embeddings = Embeddings(List(CypherMap()))
 }
 
-case class Embeddings(data: List[CypherMap]) {
+case class Embeddings(data: Seq[CypherMap]) {
 
   def columns: Set[String] = data.headOption match {
     case Some(row) => row.keys

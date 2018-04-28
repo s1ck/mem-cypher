@@ -90,10 +90,10 @@ case class MemCypherGraph(
     val targetHeader = RecordHeader.nodeFromSchema(node, filteredSchema)
     val flattenedNodes = filteredNodes.map(flattenNode(_, targetHeader))
 
-    println(targetHeader.pretty)
-    println(filteredNodes.zip(flattenedNodes).mkString("\n"))
+//    println(targetHeader.pretty)
+//    println(filteredNodes.zip(flattenedNodes).mkString("\n"))
 
-    MemRecords.create(filteredNodes.map(node => CypherMap(name -> node)).toList, targetHeader)
+    MemRecords.create(flattenedNodes, targetHeader)
   }
 
   /**
@@ -107,12 +107,12 @@ case class MemCypherGraph(
     val filteredRels = if (relCypherType.types.isEmpty) rels else typeRelMap.filterKeys(relCypherType.types.contains).values.flatten.toSeq
     val filteredSchema = schemaForRels(filteredRels)
     val targetHeader = RecordHeader.relationshipFromSchema(rel, filteredSchema)
-    val targetRels = filteredRels.map(flattenRel(_, targetHeader))
+    val flattenedRels = filteredRels.map(flattenRel(_, targetHeader))
 
-    println(targetHeader.pretty)
-    println(filteredRels.zip(targetRels).mkString("\n"))
+//    println(targetHeader.pretty)
+//    println(filteredRels.zip(flattenedRels).mkString("\n"))
 
-    MemRecords.create(filteredRels.map(rel => CypherMap(name -> rel)).toList, targetHeader)
+    MemRecords.create(flattenedRels, targetHeader)
   }
 
   private def flattenNode(node: MemNode, targetHeader: RecordHeader): CypherMap = {

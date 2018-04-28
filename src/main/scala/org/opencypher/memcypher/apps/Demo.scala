@@ -32,7 +32,7 @@ object Demo extends App {
 //    s"""|MATCH (n:Person)
 //        |RETURN n.city, n.age
 //        |ORDER BY n.city ASC, n.age DESC""".stripMargin
-  val query = "MATCH ()-[r]->() RETURN r"
+  val query = "MATCH (n) RETURN id(n), labels(n), n.name"
 
   logger.info(s"Executing query: $query")
 
@@ -53,7 +53,7 @@ object DemoData {
     e20, e21, e22, e23)
 
 
-  val n0 = MemNode(0L, Set("Person"), CypherMap(
+  val n0 = MemNode(0L, Set("Person", "Moderator"), CypherMap(
     "name" -> "Alice",
     "gender" -> "f",
     "city" -> "Leipzig",
@@ -74,7 +74,7 @@ object DemoData {
     "age" -> 30
   ))
 
-  val n3 = MemNode(3L, Set("Person"), CypherMap(
+  val n3 = MemNode(3L, Set("Person", "Moderator"), CypherMap(
     "name" -> "Dave",
     "gender" -> "m",
     "city" -> "Dresden",
