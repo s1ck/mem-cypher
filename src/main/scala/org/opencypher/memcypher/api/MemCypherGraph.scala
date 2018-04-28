@@ -79,7 +79,11 @@ case class MemCypherGraph(
     */
   override def nodes(name: String, nodeCypherType: CTNode): MemRecords = {
     val node = Var(name)(nodeCypherType)
-    val filteredNodes = if (nodeCypherType.labels.isEmpty) nodes else labelNodeMap(nodeCypherType.labels)
+    val filteredNodes = if (nodeCypherType.labels.isEmpty) {
+      nodes
+    } else {
+      labelNodeMap.filterKeys(nodeCypherType.labels.subsetOf).values.reduce(_ ++ _)
+    }
     val filteredSchema = schemaForNodes(filteredNodes)
     val targetNodeHeader = RecordHeader.nodeFromSchema(node, filteredSchema)
     MemRecords.create(filteredNodes.map(node => CypherMap(name -> node)).toList, targetNodeHeader)
