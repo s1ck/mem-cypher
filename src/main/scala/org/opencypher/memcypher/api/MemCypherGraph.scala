@@ -22,7 +22,6 @@ import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.ir.api.expr.Var
 import org.opencypher.okapi.relational.impl.table.RecordHeader
-
 object MemCypherGraph {
   def empty(implicit session: MemCypherSession): MemCypherGraph = MemCypherGraph(Seq.empty, Seq.empty)(session)
 
