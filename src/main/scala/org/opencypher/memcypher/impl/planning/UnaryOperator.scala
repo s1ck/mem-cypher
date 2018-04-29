@@ -20,8 +20,8 @@ import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.block.SortItem
 import org.opencypher.okapi.ir.api.expr.{Aggregator, Expr, Var}
-import org.opencypher.okapi.relational.impl.table.{FieldSlotContent, ProjectedExpr, ProjectedField, RecordHeader}
 import org.opencypher.okapi.ir.impl.syntax.ExprSyntax._
+import org.opencypher.okapi.relational.impl.table.{FieldSlotContent, ProjectedExpr, ProjectedField, RecordHeader}
 
 private[memcypher] abstract class UnaryOperator extends MemOperator {
 
@@ -100,9 +100,12 @@ case class Project(in: MemOperator, expr: Expr, header: RecordHeader) extends Un
     val data = prev.records.data
 
     val newData = headerNames.diff(dataNames) match {
+
       case Seq(one) =>
         logger.info(s"Projecting $expr to key $one")
         data.project(expr, one)(header, context)
+
+      case seq if seq.isEmpty => data
     }
 
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
@@ -122,7 +125,8 @@ case class Distinct(in: MemOperator, fields: Set[Var]) extends UnaryOperator wit
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Distinct on ${fields.mkString(",")}")
-    val newData = prev.records.data.distinct(fields)(header, context)
+    val distinctFields = fields.flatMap(header.selfWithChildren).map(_.columnName)
+    val newData = prev.records.data.distinct(distinctFields)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
@@ -130,25 +134,35 @@ case class Distinct(in: MemOperator, fields: Set[Var]) extends UnaryOperator wit
 case class Aggregate(
   in: MemOperator,
   groupBy: Set[Var],
-  aggregations: Set[(Var, Aggregator)]) extends UnaryOperator with InheritedHeader {
+  aggregations: Set[(Var, Aggregator)],
+  header: RecordHeader
+) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Grouping on ${groupBy.mkString(",")}, aggregating on ${aggregations.mkString(",")}")
-    val newData = prev.records.data.group(groupBy, aggregations)(header, context)
+
+    val prevHeader = prev.records.header
+
+    val groupByExpressions = groupBy
+      .flatMap(prevHeader.selfWithChildren)
+      .map(_.content.key)
+
+    val newData = prev.records.data.group(groupByExpressions, aggregations)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
 
 case class Drop(
   in: MemOperator,
-  dropFields: Seq[Expr]) extends UnaryOperator with InheritedHeader {
+  dropFields: Seq[Expr],
+  header: RecordHeader) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     val records = prev.records
     val dropColumns = dropFields
-        .map(_.columnName)
-        .filter(records.columns.contains)
-        .toSet
+      .map(_.columnName)
+      .filter(records.columns.contains)
+      .toSet
     logger.info(s"Dropping columns: ${dropColumns.mkString("[", ", ", "]")}")
     val newData = if (dropColumns.isEmpty) records.data else records.data.drop(dropColumns)(header, context)
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
@@ -157,7 +171,8 @@ case class Drop(
 
 case class OrderBy(
   in: MemOperator,
-  sortItems: Seq[SortItem[Expr]]) extends UnaryOperator with InheritedHeader {
+  sortItems: Seq[SortItem[Expr]]
+) extends UnaryOperator with InheritedHeader {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     logger.info(s"Ordering by: ${sortItems.mkString("[", ", ", "]")}")
@@ -169,7 +184,8 @@ case class OrderBy(
 case class RemoveAliases(
   in: MemOperator,
   aliases: Set[(ProjectedField, ProjectedExpr)],
-  header: RecordHeader) extends UnaryOperator {
+  header: RecordHeader
+) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     val renamings = aliases.map { case (l, r) => l.columnName -> r.columnName }.toMap

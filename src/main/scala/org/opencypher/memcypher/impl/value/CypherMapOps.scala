@@ -41,7 +41,7 @@ object CypherMapOps {
           context.parameters(name)
 
         case _: Var | _: Param | _: Property | _: HasLabel | _: Type | _: StartNode | _: EndNode =>
-          logger.info(s"Direct lookup: `$expr` in $map")
+          logger.info(s"Direct lookup: Expr `$expr` with column name `${expr.columnName}` in $map")
           map(expr.columnName)
 
         case Id(v) =>

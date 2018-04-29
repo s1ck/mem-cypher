@@ -26,6 +26,7 @@ import org.opencypher.okapi.impl.util.PrintOptions
 import org.opencypher.okapi.ir.api.block.{Asc, Desc, SortItem}
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
+import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
 
@@ -90,12 +91,12 @@ case class Embeddings(data: Seq[CypherMap]) {
     copy(data = data.filter(row => row.evaluate(expr).as[Boolean].getOrElse(false)))
 
   def drop(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
-    copy(data = data.map(_.filterKeys(columns -- fields)))
+    copy(data = data.map(row => row.filterKeys(row.keys -- fields)))
 
-  def distinct(fields: Set[Var])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
-    copy(data = select(fields.map(_.name))(header, context).data.distinct)
+  def distinct(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
+    copy(data = select(fields)(header, context).data.distinct)
 
-  def group(by: Set[Var], aggregations: Set[(Var, Aggregator)])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+  def group(by: Set[Expr], aggregations: Set[(Var, Aggregator)])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
     val groupKeys = by.toSeq
     val groupedData = data
       .groupBy(row => groupKeys.map(row.evaluate))
@@ -148,10 +149,12 @@ case class Embeddings(data: Seq[CypherMap]) {
         }
     }
 
+    val groupCols = groupKeys.map(_.columnName)
+
     val withKeysAndAggregates = withAggregates.map {
       case (groupValues, aggregateMap) =>
-        groupKeys.zip(groupValues).foldLeft(aggregateMap) {
-          case (current, (Var(groupKey), groupValue)) => current.updated(groupKey, groupValue)
+        groupCols.zip(groupValues).foldLeft(aggregateMap) {
+          case (current, (groupCol, groupValue)) => current.updated(groupCol, groupValue)
         }
     }.toList
 

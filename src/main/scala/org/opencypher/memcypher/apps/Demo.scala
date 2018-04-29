@@ -28,11 +28,10 @@ object Demo extends App {
   PrintFlatPlan.set()
   PrintPhysicalPlan.set()
 
-//  val query =
-//    s"""|MATCH (n:Person)
-//        |RETURN n.city, n.age
-//        |ORDER BY n.city ASC, n.age DESC""".stripMargin
-  val query = "MATCH (n) RETURN n.name"
+  val query =
+    s"""|MATCH (n:Person)
+        |RETURN n.city, n.age
+        |ORDER BY n.city ASC, n.age DESC""".stripMargin
 
   logger.info(s"Executing query: $query")
 
