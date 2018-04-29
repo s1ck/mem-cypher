@@ -52,7 +52,7 @@ object DemoData {
     e20, e21, e22, e23)
 
 
-  val n0 = MemNode(0L, Set("Person"), CypherMap(
+  val n0 = MemNode(0L, Set("Person", "Moderator"), CypherMap(
     "name" -> "Alice",
     "gender" -> "f",
     "city" -> "Leipzig",
@@ -73,7 +73,7 @@ object DemoData {
     "age" -> 30
   ))
 
-  val n3 = MemNode(3L, Set("Person"), CypherMap(
+  val n3 = MemNode(3L, Set("Person", "Moderator"), CypherMap(
     "name" -> "Dave",
     "gender" -> "m",
     "city" -> "Dresden",

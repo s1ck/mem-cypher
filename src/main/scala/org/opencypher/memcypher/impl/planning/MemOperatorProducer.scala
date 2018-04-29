@@ -95,12 +95,12 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
     in: MemOperator,
     group: Set[Var],
     aggregations: Set[(Var, Aggregator)],
-    header: RecordHeader): MemOperator = Aggregate(in, group, aggregations)
+    header: RecordHeader): MemOperator = Aggregate(in, group, aggregations, header)
 
   override def planDrop(
     in: MemOperator,
     dropFields: Seq[Expr],
-    header: RecordHeader): MemOperator = Drop(in, dropFields)
+    header: RecordHeader): MemOperator = Drop(in, dropFields, header)
 
   override def planOrderBy(
     in: MemOperator,

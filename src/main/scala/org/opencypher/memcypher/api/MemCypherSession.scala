@@ -26,6 +26,7 @@ import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.impl.exception.NotImplementedException
 import org.opencypher.okapi.impl.io.SessionGraphDataSource
 import org.opencypher.okapi.impl.util.Measurement.time
+import org.opencypher.okapi.ir.api.configuration.IrConfiguration.PrintIr
 import org.opencypher.okapi.ir.api.expr.Expr
 import org.opencypher.okapi.ir.api.{CypherQuery, IRCatalogGraph}
 import org.opencypher.okapi.ir.impl.parse.CypherParser
@@ -78,6 +79,10 @@ class MemCypherSession(override val sessionNamespace: Namespace) extends CypherS
     val allParameters: CypherMap = parameters ++ extractedParameters
 
     val ir = time("IR translation")(IRBuilder(stmt)(IRBuilderContext.initial(query, allParameters, semState, ambientGraph, qgnGenerator, dataSourceMapping)))
+
+    if (PrintIr.isSet) {
+      println(ir.pretty)
+    }
 
     val cypherQuery = ir match {
       case cq: CypherQuery[Expr] => cq
