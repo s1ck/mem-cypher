@@ -12,7 +12,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
   describe("node-constructs") {
     /*queries with "return graph"? ; first idea was to return a node and an edge table/record
       groupby property saved in object or just extracted?
-    TODO: copy of ... not covered yet; check if ids are unique / better checks(more than length)*/
+    TODO: ... not covered yet; check if ids are unique */
     it("without unnamed construct-variable")
     {
       val graph = initGraph("CREATE (:Person), (:Car)")
@@ -20,7 +20,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
 
       //should create one node
       result.getRecords.collect.length should be (1)
-      result.getRecords.collect should be (Array(CypherMap("nodes"->MemNode(1,Set(""),CypherMap("color"->"blue","price"->1000)))))
+      result.getRecords.collect should be (Array(CypherMap("nodes"->MemNode(1,Set(""),CypherMap.empty))))
     }
 
     it("with unbound construct variable") {
@@ -29,6 +29,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
 
       //result should contain one new node
       result.getRecords.collect.length should be (1)
+      result.getRecords.collect should be (Array(CypherMap("nodes"->MemNode(1,Set(""),CypherMap.empty))))
     }
 
     it("with bound construct variable without copying properties") {
@@ -113,7 +114,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
     it("multiple node-constructs") {
       // union node tables
       val graph = initGraph("CREATE (:Car{price:10}),(:Car{price:20}),(:Person{age:2})")
-      val result = graph.cypher("MATCH (n:Car),(m:Person) CONSTRUCT CLONE (n) NEW (m) RETURN GRAPH")
+      val result = graph.cypher("MATCH (n:Car),(m:Person) CONSTRUCT NEW ({groupby:['n']}) NEW ({groupby:['m']}) RETURN GRAPH")
 
       // in total 3 nodes ; unique ids (distinct should reduce number of nodes otherwise)
       result.getRecords.collect.distinct.length should be (3)
@@ -146,8 +147,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("CREATE (a:Person)-[:likes{since:2018}]->(b:Car)-[:boughtby{in:2017}]->(a), (a)-[:owns{for:1}]->(b)")
       val result = graph.cypher("MATCH (n)-[e]->(m) CONSTRUCT CLONE (n),(m) NEW (n)-[e]->(m) RETURN GRAPH")
 
-      result.getRecords.collect.length should be (4)
-      //check that edge properties aren't copied
+      result.getRecords.collect.length should be (5)
     }
 
     it("with bound edge-construct variable with copying properties") {
@@ -199,7 +199,6 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
     }*/
 
     it("multiple edge constructs") {
-      //construct (n), (m),(n)<--(m),(m)-->(n)
       val graph = initGraph("Create (:filler)")
       val result = graph.cypher("CONSTRUCT NEW (n),(m), (n)-[:edge]->(m) , (m)-[:edge]->(n) RETURN GRAPH")
 
