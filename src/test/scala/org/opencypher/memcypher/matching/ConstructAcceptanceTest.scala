@@ -8,9 +8,7 @@ import org.opencypher.okapi.api.value.CypherValue.CypherMap
 class ConstructAcceptanceTest extends MemCypherTestSuite {
 
   describe("node-constructs") {
-    /*queries with "return graph"? ; first idea was to return a node and an edge table/record
-      groupby property saved in object or just extracted?
-    TODO: ... not covered yet; check if ids are unique */
+
     it("without unnamed construct-variable")
     {
       val graph = initGraph("CREATE (:Person), (:Car)")

@@ -137,7 +137,7 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
 
   override def planFromGraph(in: MemOperator, graph: LogicalCatalogGraph): MemOperator = ???
 
-  override def planConstructGraph(table: MemOperator, onGraph: MemOperator, construct: LogicalPatternGraph): MemOperator = ???
+  override def planConstructGraph(table: MemOperator, onGraph: MemOperator, construct: LogicalPatternGraph): MemOperator = ConstructGraph(table,onGraph,construct)
 
   override def planGraphUnionAll(graphs: List[MemOperator], qgn: QualifiedGraphName): MemOperator = ???
 }

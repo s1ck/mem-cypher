@@ -18,6 +18,7 @@ import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.types.CTInteger
 import org.opencypher.okapi.impl.exception.NotImplementedException
 import org.opencypher.okapi.ir.api.expr.{Expr, Id, Var}
+import org.opencypher.okapi.logical.impl.LogicalPatternGraph
 import org.opencypher.okapi.relational.impl.physical.{InnerJoin, JoinType, LeftOuterJoin, RightOuterJoin}
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 
@@ -77,4 +78,15 @@ final case class TabularUnionAll(left: MemOperator, right: MemOperator) extends 
     val newData = left.records.data.unionAll(right.records.data)
     MemPhysicalResult(MemRecords(newData, header), left.workingGraph, left.workingGraphName)
   }
+}
+
+final case class ConstructGraph(left: MemOperator, right: MemOperator, construct: LogicalPatternGraph) extends BinaryOperator {
+  //TODO: fill
+  override def executeBinary(left: MemPhysicalResult, right: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
+
+    MemPhysicalResult(MemRecords(left.records.data,header), left.workingGraph, left.workingGraphName)
+  }
+
+  override def header: RecordHeader = RecordHeader.empty
 }
