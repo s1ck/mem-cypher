@@ -15,14 +15,13 @@ package org.opencypher.memcypher
 
 import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession}
 import org.opencypher.memcypher.support.creation.memcypher.MemCypherTestGraphFactory
-import org.opencypher.okapi.ir.test.support.creation.propertygraph.TestPropertyGraphFactory
 import org.scalatest.{FunSpec, Matchers}
-
 import org.opencypher.memcypher.api.MemCypherConverters._
+import org.opencypher.okapi.testing.propertygraph.TestGraphFactory
 
 abstract class MemCypherTestSuite extends FunSpec with Matchers {
   implicit lazy val session: MemCypherSession = MemCypherSession.create
 
-  val initGraph: String => MemCypherGraph = (createQuery) =>
-    MemCypherTestGraphFactory(TestPropertyGraphFactory(createQuery)).asMemCypher
+  val initGraph: String => MemCypherGraph = createQuery =>
+    MemCypherTestGraphFactory(TestGraphFactory(createQuery)).asMemCypher
 }

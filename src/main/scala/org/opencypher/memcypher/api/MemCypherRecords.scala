@@ -26,10 +26,11 @@ import org.opencypher.okapi.impl.util.PrintOptions
 import org.opencypher.okapi.ir.api.block.{Asc, Desc, SortItem}
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
+import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
 
-  def create(rows: List[CypherMap], header: RecordHeader): MemRecords = MemRecords(Embeddings(rows), header)
+  def create(rows: Seq[CypherMap], header: RecordHeader): MemRecords = MemRecords(Embeddings(rows), header)
 
   def create(embeddings: Embeddings, header: RecordHeader): MemRecords = MemRecords(embeddings, header)
 
@@ -49,13 +50,17 @@ case class MemRecords(
     case None => Map.empty
   }
 
-  override def iterator: Iterator[CypherMap] = data.rows
+  override def iterator: Iterator[CypherMap] = toCypherMap.iterator
 
   override def size: Long = rows.size
 
   override def show(implicit options: PrintOptions): Unit = RecordsPrinter.print(this)
 
   override def collect: Array[CypherMap] = iterator.toArray
+
+  def toCypherMap: Seq[CypherMap] = {
+    data.data.map(row => row.nest(header))
+  }
 }
 
 object Embeddings {
@@ -63,7 +68,7 @@ object Embeddings {
   def unit: Embeddings = Embeddings(List(CypherMap()))
 }
 
-case class Embeddings(data: List[CypherMap]) {
+case class Embeddings(data: Seq[CypherMap]) {
 
   def columns: Set[String] = data.headOption match {
     case Some(row) => row.keys
@@ -86,67 +91,70 @@ case class Embeddings(data: List[CypherMap]) {
     copy(data = data.filter(row => row.evaluate(expr).as[Boolean].getOrElse(false)))
 
   def drop(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
-    copy(data = data.map(_.filterKeys(columns -- fields)))
+    copy(data = data.map(row => row.filterKeys(row.keys -- fields)))
 
-  def distinct(fields: Set[Var])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
-    copy(data = select(fields.map(_.name))(header, context).data.distinct)
+  def distinct(fields: Set[String])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings =
+    copy(data = select(fields)(header, context).data.distinct)
 
-  def group(by: Set[Var], aggregations: Set[(Var, Aggregator)])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
+  def group(by: Set[Expr], aggregations: Set[(Var, Aggregator)])(implicit header: RecordHeader, context: MemRuntimeContext): Embeddings = {
     val groupKeys = by.toSeq
     val groupedData = data
       .groupBy(row => groupKeys.map(row.evaluate))
 
     val withAggregates = groupedData.mapValues {
-      case (values) => aggregations.foldLeft(CypherMap.empty) {
-        case (current, (Var(to), agg)) =>
-          agg match {
-            case Count(inner, distinct) =>
-              val evaluated = values
-                .map(_.evaluate(inner))
-                .filterNot(_.isNull)
-              val toCount = if (distinct) evaluated.distinct else evaluated
-              current.updated(to, CypherInteger(toCount.size))
+      values =>
+        aggregations.foldLeft(CypherMap.empty) {
+          case (current, (Var(to), agg)) =>
+            agg match {
+              case Count(inner, distinct) =>
+                val evaluated = values
+                  .map(_.evaluate(inner))
+                  .filterNot(_.isNull)
+                val toCount = if (distinct) evaluated.distinct else evaluated
+                current.updated(to, CypherInteger(toCount.size))
 
-            case CountStar(_) =>
-              current.updated(to, CypherInteger(values.size))
+              case CountStar(_) =>
+                current.updated(to, CypherInteger(values.size))
 
-            case Sum(inner) =>
-              val sum = values
-                .map(_.evaluate(inner))
-                .filterNot(_.isNull)
-                .reduce(_ + _)
-              current.updated(to, sum)
+              case Sum(inner) =>
+                val sum = values
+                  .map(_.evaluate(inner))
+                  .filterNot(_.isNull)
+                  .reduce(_ + _)
+                current.updated(to, sum)
 
-            case Min(inner) =>
-              val min = values
-                .map(_.evaluate(inner))
-                .sortWith(_ < _)
-                .head
-              current.updated(to, min)
+              case Min(inner) =>
+                val min = values
+                  .map(_.evaluate(inner))
+                  .sortWith(_ < _)
+                  .head
+                current.updated(to, min)
 
-            case Max(inner) =>
-              val max = values
-                .map(_.evaluate(inner))
-                .sortWith(_ > _)
-                .head
-              current.updated(to, max)
+              case Max(inner) =>
+                val max = values
+                  .map(_.evaluate(inner))
+                  .sortWith(_ > _)
+                  .head
+                current.updated(to, max)
 
-            case Collect(inner, distinct) =>
-              val coll = values
-                .map(_.evaluate(inner))
-                .filterNot(_.isNull)
-              val toCollect = if (distinct) coll.distinct else coll
-              current.updated(to, CypherList(toCollect))
+              case Collect(inner, distinct) =>
+                val coll = values
+                  .map(_.evaluate(inner))
+                  .filterNot(_.isNull)
+                val toCollect = if (distinct) coll.distinct else coll
+                current.updated(to, CypherList(toCollect))
 
-            case other => throw NotImplementedException(s"Aggregation $other not yet supported")
-          }
-      }
+              case other => throw NotImplementedException(s"Aggregation $other not yet supported")
+            }
+        }
     }
+
+    val groupCols = groupKeys.map(_.columnName)
 
     val withKeysAndAggregates = withAggregates.map {
       case (groupValues, aggregateMap) =>
-        groupKeys.zip(groupValues).foldLeft(aggregateMap) {
-          case (current, (Var(groupKey), groupValue)) => current.updated(groupKey, groupValue)
+        groupCols.zip(groupValues).foldLeft(aggregateMap) {
+          case (current, (groupCol, groupValue)) => current.updated(groupCol, groupValue)
         }
     }.toList
 

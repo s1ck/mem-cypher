@@ -22,7 +22,7 @@ object RecordHeaderUtils {
 
     def columnName: String = slot.content match {
       case fieldContent: FieldSlotContent => fieldContent.field.name
-      case ProjectedExpr(p: Property) => p.withoutType + p.cypherType.material.name
+      case ProjectedExpr(p: Property) => s"${p.withoutType}:${p.cypherType.material.name}"
       case ProjectedExpr(expr) => expr.withoutType
     }
   }
@@ -30,14 +30,14 @@ object RecordHeaderUtils {
   implicit class RichRecordSlotContent(content: SlotContent) {
     def columnName: String = content match {
       case fieldContent: FieldSlotContent => fieldContent.field.name
-      case ProjectedExpr(p: Property) => p.withoutType + p.cypherType.material.name
+      case ProjectedExpr(p: Property) => s"${p.withoutType}:${p.cypherType.material.name}"
       case ProjectedExpr(expr) => expr.withoutType
     }
   }
 
   implicit class RichExpression(expr: Expr) {
     def columnName: String = expr match {
-      case _: Property => expr.withoutType + expr.cypherType.material.name
+      case _: Property => s"${expr.withoutType}:${expr.cypherType.material.name}"
       case _ => expr.withoutType
     }
   }
