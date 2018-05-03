@@ -1,3 +1,16 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.opencypher.memcypher.matching
 
 import org.opencypher.memcypher.MemCypherTestSuite
@@ -145,9 +158,9 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("CREATE (a:Person)-[:likes{since:2018}]->(b:Car)-[:boughtby{in:2017}]->(a), (a)-[:owns{for:1}]->(b)")
       val result = graph.cypher("MATCH (m)-[e]->(n) CONSTRUCT NEW(Copy of m) NEW(Copy of n) NEW (n)-[e]->(m) RETURN GRAPH")
 
-      result.getGraph.relationships("n").collect should be (Array(CypherMap("edge"->MemRelationship(3,1,2,"likes",CypherMap("since"->2018)))),
+      result.getGraph.relationships("n").collect should be (Array(CypherMap("edge"->MemRelationship(3,1,2,"likes",CypherMap("since"->2018))),
                                                                    CypherMap("edge"->MemRelationship(4,2,1,"likes",CypherMap("in"->2017))),
-                                                                   CypherMap("edge"->MemRelationship(5,1,2,"likes",CypherMap("for"->1))))
+                                                                   CypherMap("edge"->MemRelationship(5,1,2,"likes",CypherMap("for"->1)))))
     }
 
     //find better example
@@ -160,8 +173,8 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       // 2 new nodes, 2 new edges
       result.getGraph.nodes("n").collect.length should be (2)
       result.getGraph.relationships("n").collect.length should be (2)
-      result.getGraph.relationships("n").collect should be (Array(CypherMap("edge"->MemRelationship(3,1,2,"PurchaseYear",CypherMap.empty))),
-                                                                          CypherMap("edge"->MemRelationship(4,1,2,"PurchaseYear",CypherMap.empty)))
+      result.getGraph.relationships("n").collect should be (Array(CypherMap("edge"->MemRelationship(3,1,2,"PurchaseYear",CypherMap.empty)),
+                                                                          CypherMap("edge"->MemRelationship(4,1,2,"PurchaseYear",CypherMap.empty))))
     }
 
     it("with setting properties") {
