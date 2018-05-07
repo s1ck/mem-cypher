@@ -21,6 +21,7 @@ import org.opencypher.okapi.impl.exception.IllegalArgumentException
 import org.opencypher.okapi.ir.api.block.SortItem
 import org.opencypher.okapi.ir.api.expr.{Aggregator, Expr, Var}
 import org.opencypher.okapi.ir.impl.syntax.ExprSyntax._
+import org.opencypher.okapi.logical.impl.LogicalCatalogGraph
 import org.opencypher.okapi.relational.impl.table.{FieldSlotContent, ProjectedExpr, ProjectedField, RecordHeader}
 
 private[memcypher] abstract class UnaryOperator extends MemOperator {
@@ -194,3 +195,17 @@ case class RemoveAliases(
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
+
+final case class ReturnGraph(in:MemOperator) extends UnaryOperator {
+
+  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    MemPhysicalResult(MemRecords.unit()(prev.workingGraph.session),prev.workingGraph,prev.workingGraphName)
+  }
+
+  override def header: RecordHeader = RecordHeader.empty
+}
+
+/**final case class FromGraph(in:MemOperator,graph:LogicalCatalogGraph) extends UnaryOperator with InheritedHeader {
+
+  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = MemPhysicalResult(prev.records, resolve(graph.qualifiedGraphName), graph.qualifiedGraphName)
+}**/

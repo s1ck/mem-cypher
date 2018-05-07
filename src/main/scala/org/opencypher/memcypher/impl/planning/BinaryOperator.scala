@@ -13,10 +13,14 @@
  */
 package org.opencypher.memcypher.impl.planning
 
-import org.opencypher.memcypher.api.MemRecords
+import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
+import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession, MemRecords}
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
+import org.opencypher.okapi.api.graph.{GraphName, QualifiedGraphName}
 import org.opencypher.okapi.api.types.CTInteger
+import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.impl.exception.NotImplementedException
+import org.opencypher.okapi.ir.api.Label
 import org.opencypher.okapi.ir.api.expr.{Expr, Id, Var}
 import org.opencypher.okapi.logical.impl.LogicalPatternGraph
 import org.opencypher.okapi.relational.impl.physical.{InnerJoin, JoinType, LeftOuterJoin, RightOuterJoin}
@@ -80,13 +84,45 @@ final case class TabularUnionAll(left: MemOperator, right: MemOperator) extends 
   }
 }
 
-final case class ConstructGraph(left: MemOperator, right: MemOperator, construct: LogicalPatternGraph) extends BinaryOperator {
-  //TODO: fill
-  override def executeBinary(left: MemPhysicalResult, right: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-    val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
+sealed trait ConstructedEntity {
+  def v: Var
+  def baseEntity: Option[Var]
+}
+case class ConstructedNode(
+  v: Var,
+  labels: Set[Label],
+  baseEntity: Option[Var]) extends ConstructedEntity
 
-    MemPhysicalResult(MemRecords(left.records.data,header), left.workingGraph, left.workingGraphName)
+case class ConstructedRelationship(
+  v: Var,
+  source: Var,
+  target: Var,
+  typ: Option[String],
+  baseEntity: Option[Var]) extends ConstructedEntity {
+  require(typ.isDefined || baseEntity.isDefined, s"$this: Need to define either the rel type or an equivalence model to construct a relationship")
+}
+
+final case class ConstructGraph(left: MemOperator, right: MemOperator, construct: LogicalPatternGraph) extends BinaryOperator {
+  //TODO: fix , that demo gets til execute binary (maybe implement planReturnGraph after all?) ; Unittests?
+  //toString method from openCypher
+  override def toString: String = {
+    val entities = construct.clones.keySet ++ construct.newEntities.map(_.v)
+    s"ConstructGraph(on=[${construct.onGraphs.mkString(", ")}], entities=[${entities.mkString(", ")}])"
   }
 
   override def header: RecordHeader = RecordHeader.empty
+
+  override def executeBinary(left: MemPhysicalResult, right: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    implicit val session : MemCypherSession = left.workingGraph.session
+    val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
+
+    if(newEntities.nonEmpty){
+
+    }
+
+    val nodes:Seq[MemNode] = Seq(MemNode(1,Set.empty,CypherMap.empty))
+    val rels:Seq[MemRelationship] = Seq()
+    val newGraph = MemCypherGraph.create(nodes,rels)
+    MemPhysicalResult(MemRecords.unit(), newGraph, session.qgnGenerator.generate)
+  }
 }

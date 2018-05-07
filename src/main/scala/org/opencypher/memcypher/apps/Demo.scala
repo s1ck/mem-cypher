@@ -29,10 +29,9 @@ object Demo extends App {
   PrintPhysicalPlan.set()
 
   val query =
-    s"""|MATCH (n:Person)
-        |RETURN n.city, n.age
-        |ORDER BY n.city ASC, n.age DESC""".stripMargin
-
+    s"""|Construct New()
+        |RETURN GRAPH""".stripMargin
+  
   logger.info(s"Executing query: $query")
 
   implicit val memCypher: MemCypherSession = MemCypherSession.create
