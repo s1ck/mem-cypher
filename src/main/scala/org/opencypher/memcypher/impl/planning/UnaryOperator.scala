@@ -205,7 +205,7 @@ final case class ReturnGraph(in:MemOperator) extends UnaryOperator {
   override def header: RecordHeader = RecordHeader.empty
 }
 
-/**final case class FromGraph(in:MemOperator,graph:LogicalCatalogGraph) extends UnaryOperator with InheritedHeader {
+final case class FromGraph(in:MemOperator,graph:LogicalCatalogGraph) extends UnaryOperator with InheritedHeader {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = MemPhysicalResult(prev.records, resolve(graph.qualifiedGraphName), graph.qualifiedGraphName)
-}**/
+}

@@ -28,7 +28,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val result = graph.cypher("CONSTRUCT NEW() RETURN GRAPH")
 
       result.getGraph.nodes("n").collect.length should be (1)
-      result.getGraph.nodes("n").collect should be (Array(CypherMap("nodes"->MemNode(1,Set.empty,CypherMap.empty))))
+      result.getGraph.nodes("n").collect should be (Array(CypherMap("n"->MemNode(1,Set.empty,CypherMap.empty))))
     }
 
     it("with unbound construct variable") {
@@ -36,7 +36,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val result = graph.cypher("Match (i) CONSTRUCT NEW(n) RETURN GRAPH")
 
       result.getGraph.nodes("n").collect.length should be (1)
-      result.getGraph.nodes("n").collect should be (Array(CypherMap("nodes"->MemNode(1,Set(""),CypherMap.empty))))
+      result.getGraph.nodes("n").collect should be (Array(CypherMap("n"->MemNode(1,Set(""),CypherMap.empty))))
     }
 
     it("with bound construct variable without copying properties") {
@@ -81,7 +81,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("CREATE (:Person),(:Car)")
       val result = graph.cypher("""CONSTRUCT NEW ({color:"blue",price:1000}) RETURN GRAPH""")
 
-      result.getGraph.nodes("n").collect should be (Array(CypherMap("nodes"->MemNode(1,Set.empty,CypherMap("color"->"blue","price"->1000)))))
+      result.getGraph.nodes("n").collect should be (Array(CypherMap("n"->MemNode(1,Set.empty,CypherMap("color"->"blue","price"->1000)))))
     }
     it("with setting one label") {
       val graph = initGraph("CREATE (:Person),(:Car)")
@@ -95,7 +95,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val result = graph.cypher("CONSTRUCT NEW (:Person:Actor) RETURN GRAPH")
 
       // check labels of node
-      result.getGraph.nodes("n").collect should be (Array(CypherMap("nodes"->MemNode(1,Set("Person","Actor")))))
+      result.getGraph.nodes("n").collect should be (Array(CypherMap("n"->MemNode(1,Set("Person","Actor")))))
     }
 
     it("with aggregated properties") {
@@ -103,7 +103,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("CREATE ({age:10}),({age:12}),({age:14})")
       val result = graph.cypher("""MATCH (n) CONSTRUCT NEW({max_age:"max(n.age)"}) RETURN GRAPH""")
 
-      result.getGraph.nodes("n").collect should be (Array(CypherMap("nodes"->MemNode(1,Set.empty,CypherMap("max_age"->14)))))
+      result.getGraph.nodes("n").collect should be (Array(CypherMap("n"->MemNode(1,Set.empty,CypherMap("max_age"->14)))))
     }
 
     it("with group by and aggregation") {
@@ -131,7 +131,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
 
       result.getGraph.nodes("n").collect.length should be (2)
       result.getGraph.relationships("n").collect.length should be (1)
-      result.getGraph.relationships("n").collect should contain (CypherMap("edge"->MemRelationship(3,1,2,"edge",CypherMap.empty)))
+      result.getGraph.relationships("e").collect should contain (CypherMap("e"->MemRelationship(3,1,2,"edge",CypherMap.empty)))
     }
 
     it("with bound node-variables and unbound edge-variables") {
@@ -141,8 +141,8 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       //edges implicit grouped by source and target node (here m,n). thus 2 edges created (and 2 nodes copied)
       result.getGraph.nodes("n").collect.length should be (2)
       result.getGraph.relationships("n").collect.length should be (2)
-      result.getGraph.relationships("n").collect should contain (CypherMap("edge"->MemRelationship(3,1,2,"edge",CypherMap.empty)))
-      result.getGraph.relationships("n").collect should contain (CypherMap("edge"->MemRelationship(3,2,1,"edge",CypherMap.empty)))
+      result.getGraph.relationships("e").collect should contain (CypherMap("e"->MemRelationship(3,1,2,"edge",CypherMap.empty)))
+      result.getGraph.relationships("e").collect should contain (CypherMap("e"->MemRelationship(3,2,1,"edge",CypherMap.empty)))
     }
 
     it("with bound construct variable without copying properties") {
@@ -158,9 +158,9 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("CREATE (a:Person)-[:likes{since:2018}]->(b:Car)-[:boughtby{in:2017}]->(a), (a)-[:owns{for:1}]->(b)")
       val result = graph.cypher("MATCH (m)-[e]->(n) CONSTRUCT NEW(Copy of m) NEW(Copy of n) NEW (n)-[e]->(m) RETURN GRAPH")
 
-      result.getGraph.relationships("n").collect should be (Array(CypherMap("edge"->MemRelationship(3,1,2,"likes",CypherMap("since"->2018))),
-                                                                   CypherMap("edge"->MemRelationship(4,2,1,"likes",CypherMap("in"->2017))),
-                                                                   CypherMap("edge"->MemRelationship(5,1,2,"likes",CypherMap("for"->1)))))
+      result.getGraph.relationships("e").collect should be (Array(CypherMap("edge"->MemRelationship(3,1,2,"likes",CypherMap("since"->2018))),
+                                                                   CypherMap("e"->MemRelationship(4,2,1,"likes",CypherMap("in"->2017))),
+                                                                   CypherMap("e"->MemRelationship(5,1,2,"likes",CypherMap("for"->1)))))
     }
 
     //find better example
@@ -173,8 +173,8 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       // 2 new nodes, 2 new edges
       result.getGraph.nodes("n").collect.length should be (2)
       result.getGraph.relationships("n").collect.length should be (2)
-      result.getGraph.relationships("n").collect should be (Array(CypherMap("edge"->MemRelationship(3,1,2,"PurchaseYear",CypherMap.empty)),
-                                                                          CypherMap("edge"->MemRelationship(4,1,2,"PurchaseYear",CypherMap.empty))))
+      result.getGraph.relationships("e").collect should be (Array(CypherMap("e"->MemRelationship(3,1,2,"PurchaseYear",CypherMap.empty)),
+                                                                          CypherMap("e"->MemRelationship(4,1,2,"PurchaseYear",CypherMap.empty))))
     }
 
     it("with setting properties") {
@@ -182,7 +182,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("Create (:filler)")
       val result = graph.cypher("""CONSTRUCT NEW (n),(m),(n)-[:edge{color:"blue",year:2018}]->(m) RETURN GRAPH""")
 
-      result.getGraph.relationships("n").collect should contain (CypherMap("edge"->MemRelationship(3,1,2,"edge",CypherMap("color"->"blue","year"->2018))))
+      result.getGraph.relationships("e").collect should contain (CypherMap("e"->MemRelationship(3,1,2,"edge",CypherMap("color"->"blue","year"->2018))))
     }
 
     it("with setting aggregated properties") {
@@ -191,8 +191,8 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
             |(a)-[:buys{amount:10, year:2011}]->(b), (a)-[:buys{amount:10, year:2010}]->(b)""".stripMargin)
       val result = graph.cypher("""MATCH (m)-[e]->(n) CONSTRUCT NEW (m)-[:PurchaseYear{groupby:['e.year'], amount:"sum(e.amount)"}]->(n) RETURN GRAPH""")
 
-      result.getGraph.relationships("n").collect should be (Array(CypherMap("edge"->MemRelationship(3,1,2,"PurchaseYear",CypherMap("amount"->20))),
-                                                                          CypherMap("edge"->MemRelationship(4,1,2,"PurchaseYear",CypherMap("amount"->10)))))
+      result.getGraph.relationships("e").collect should be (Array(CypherMap("e"->MemRelationship(3,1,2,"PurchaseYear",CypherMap("amount"->20))),
+                                                                          CypherMap("e"->MemRelationship(4,1,2,"PurchaseYear",CypherMap("amount"->10)))))
     }
 
     /*it("with invalid nodes") {

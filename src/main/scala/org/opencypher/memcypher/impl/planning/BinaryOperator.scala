@@ -13,6 +13,8 @@
  */
 package org.opencypher.memcypher.impl.planning
 
+import java.util.concurrent.atomic.AtomicLong
+
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession, MemRecords}
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
@@ -103,7 +105,7 @@ case class ConstructedRelationship(
 }
 
 final case class ConstructGraph(left: MemOperator, right: MemOperator, construct: LogicalPatternGraph) extends BinaryOperator {
-  //TODO: fix , that demo gets til execute binary (maybe implement planReturnGraph after all?) ; Unittests?
+  val current_max_id = new AtomicLong();
   //toString method from openCypher
   override def toString: String = {
     val entities = construct.clones.keySet ++ construct.newEntities.map(_.v)
@@ -113,16 +115,21 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
   override def header: RecordHeader = RecordHeader.empty
 
   override def executeBinary(left: MemPhysicalResult, right: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
+    //TODO: plan machen! ; wie komme ich an tabelle ran? (left.records = tabelle (über einzelne embeddings iterieren?))
     implicit val session : MemCypherSession = left.workingGraph.session
+
     val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
 
     if(newEntities.nonEmpty){
 
     }
 
-    val nodes:Seq[MemNode] = Seq(MemNode(1,Set.empty,CypherMap.empty))
+    val nodes:Seq[MemNode] = Seq(MemNode(generateID(),Set.empty,CypherMap.empty))
     val rels:Seq[MemRelationship] = Seq()
     val newGraph = MemCypherGraph.create(nodes,rels)
     MemPhysicalResult(MemRecords.unit(), newGraph, session.qgnGenerator.generate)
   }
+
+  //TODO: with grouping make with map (key = variablename++groupedbyvars(List(var,value))
+  def generateID(): Long = current_max_id.incrementAndGet();
 }
