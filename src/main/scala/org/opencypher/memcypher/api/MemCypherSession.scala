@@ -56,6 +56,10 @@ class MemCypherSession(override val sessionNamespace: Namespace) extends CypherS
 
   private[opencypher] val emptyGraphQgn = QualifiedGraphName(sessionNamespace, GraphName("emptyGraph"))
 
+  // Store empty graph in catalog, so operators that start with an empty graph can refer to its QGN
+  // TODO: this is duplicated from CAPSSession and can be generalized
+  store(emptyGraphQgn, MemCypherGraph.empty(this))
+
   def catalog(qualifiedGraphName: QualifiedGraphName): PropertyGraphDataSource = {
     dataSourceMapping(qualifiedGraphName.namespace)
   }
