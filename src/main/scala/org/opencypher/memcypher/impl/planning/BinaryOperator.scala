@@ -16,17 +16,19 @@ package org.opencypher.memcypher.impl.planning
 import java.util.concurrent.atomic.AtomicLong
 
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
-import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession, MemRecords}
+import org.opencypher.memcypher.api.{Embeddings, MemCypherGraph, MemCypherSession, MemRecords}
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.graph.{GraphName, QualifiedGraphName}
 import org.opencypher.okapi.api.types.CTInteger
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.impl.exception.NotImplementedException
-import org.opencypher.okapi.ir.api.Label
-import org.opencypher.okapi.ir.api.expr.{Expr, Id, Var}
-import org.opencypher.okapi.logical.impl.LogicalPatternGraph
+import org.opencypher.okapi.ir.api.{Label, PropertyKey}
+import org.opencypher.okapi.ir.api.expr._
+import org.opencypher.okapi.ir.api.set.SetPropertyItem
+import org.opencypher.okapi.logical.impl
+import org.opencypher.okapi.logical.impl.{ConstructedEntity, ConstructedNode, LogicalPatternGraph}
 import org.opencypher.okapi.relational.impl.physical.{InnerJoin, JoinType, LeftOuterJoin, RightOuterJoin}
-import org.opencypher.okapi.relational.impl.table.RecordHeader
+import org.opencypher.okapi.relational.impl.table.{InternalHeader, ProjectedExpr, RecordHeader, SlotContent}
 
 private[memcypher] abstract class BinaryOperator extends MemOperator {
 
@@ -86,26 +88,9 @@ final case class TabularUnionAll(left: MemOperator, right: MemOperator) extends 
   }
 }
 
-sealed trait ConstructedEntity {
-  def v: Var
-  def baseEntity: Option[Var]
-}
-case class ConstructedNode(
-  v: Var,
-  labels: Set[Label],
-  baseEntity: Option[Var]) extends ConstructedEntity
-
-case class ConstructedRelationship(
-  v: Var,
-  source: Var,
-  target: Var,
-  typ: Option[String],
-  baseEntity: Option[Var]) extends ConstructedEntity {
-  require(typ.isDefined || baseEntity.isDefined, s"$this: Need to define either the rel type or an equivalence model to construct a relationship")
-}
-
 final case class ConstructGraph(left: MemOperator, right: MemOperator, construct: LogicalPatternGraph) extends BinaryOperator {
   val current_max_id = new AtomicLong();
+
   //toString method from openCypher
   override def toString: String = {
     val entities = construct.clones.keySet ++ construct.newEntities.map(_.v)
@@ -115,21 +100,66 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
   override def header: RecordHeader = RecordHeader.empty
 
   override def executeBinary(left: MemPhysicalResult, right: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-    //TODO: plan machen! ; wie komme ich an tabelle ran? (left.records = tabelle (über einzelne embeddings iterieren?))
-    implicit val session : MemCypherSession = left.workingGraph.session
 
+    implicit val session: MemCypherSession = left.workingGraph.session
+    val matchTable = left.records
     val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
 
-    if(newEntities.nonEmpty){
 
+    val baseTable = left.records; //todo: add allias (use .data.withColumnsRenamed )
+    val entityTable = createEntities(newEntities)
+    val entityTableWithProperties = sets.foldLeft(entityTable) {
+      case(table,SetPropertyItem(key,v,expr)) => constructProperty(v,key,expr,table)
     }
 
-    val nodes:Seq[MemNode] = Seq(MemNode(generateID(),Set.empty,CypherMap.empty))
-    val rels:Seq[MemRelationship] = Seq()
-    val newGraph = MemCypherGraph.create(nodes,rels)
+    //straight-forward version (without use of MemRecords)
+    val nodes = newEntities.foldLeft(Seq.empty[MemNode]) {
+      (list,b) => b match {
+        case x:ConstructedNode => {
+          val labels = x.labels.map(_.name.toString)
+          val properties = sets.filter(_.variable == x.v).foldLeft(CypherMap.empty) {
+            (z,setItem) => z.updated(setItem.propertyKey,
+              {setItem.setValue match
+              {case l:IntegerLit => l.v
+                case y => "tooMuchtoImplement"}}) //better way to get the value of the Expr?
+          }
+          list :+ MemNode(generateID(),labels,properties)
+        }
+        case _ => list //println("not implemented for" + z.getClass)
+    } }
+
+
+    val newGraph = MemCypherGraph.create(nodes, Seq[MemRelationship]())
     MemPhysicalResult(MemRecords.unit(), newGraph, session.qgnGenerator.generate)
   }
 
-  //TODO: with grouping make with map (key = variablename++groupedbyvars(List(var,value))
+  // with grouping make with map (key = variablename|groupedbyvars(List(var,value))
   def generateID(): Long = current_max_id.incrementAndGet();
+
+  def createEntities(newEntities: Set[ConstructedEntity]):MemRecords = {
+    val nodes = newEntities.collect {
+      case c@ConstructedNode(Var(name), _, _) => c //
+    }
+
+    val nodeData = nodes.foldLeft(Seq[CypherMap]()) {
+      (z,node) => z :+ CypherMap(("var_name",node.v.name),("labels",node.labels.map(_.name.toString).toSeq))
+    }
+
+    //todo: recordheader with varName,base,var and labels (get from nodes)?
+    MemRecords.create(Embeddings(nodeData),RecordHeader.empty)
+  }
+
+  private def constructNode(node: ConstructedNode,
+                            constructedTable: MemRecords
+                           ): Seq[MemNode] = ???
+
+  //construct propertytable --> join ? (mehrere sets auf gleiche var = in einer row?)
+  // v.name = sets._.variable (für property) TODO
+  def constructProperty(variable: Var, propertyKey: String, propertyValue: Expr, constructedTable: MemRecords)(implicit context: MemRuntimeContext) : MemRecords = {
+    val propertyExpression = Property(variable, PropertyKey(propertyKey))(propertyValue.cypherType)
+    val propertySlotContent = ProjectedExpr(propertyExpression)
+    val newHeader = RecordHeader.empty;
+    val newData = constructedTable.data;
+    MemRecords.create(newData,newHeader);
+  }
 }
