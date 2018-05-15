@@ -18,19 +18,16 @@ import java.util.concurrent.atomic.AtomicLong
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.api.{Embeddings, MemCypherGraph, MemCypherSession, MemRecords}
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
-import org.opencypher.okapi.api.graph.{GraphName, QualifiedGraphName}
 import org.opencypher.okapi.api.schema.Schema
-import org.opencypher.okapi.api.types.CTInteger
+import org.opencypher.okapi.api.types.{CTBoolean, CTInteger}
 import org.opencypher.okapi.api.value.CypherValue
-import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherValue}
+import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherMap, CypherValue}
 import org.opencypher.okapi.impl.exception.NotImplementedException
-import org.opencypher.okapi.ir.api.{Label, PropertyKey}
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.ir.api.set.SetPropertyItem
-import org.opencypher.okapi.logical.impl
 import org.opencypher.okapi.logical.impl.{ConstructedEntity, ConstructedNode, LogicalPatternGraph}
 import org.opencypher.okapi.relational.impl.physical.{InnerJoin, JoinType, LeftOuterJoin, RightOuterJoin}
-import org.opencypher.okapi.relational.impl.table.{InternalHeader, ProjectedExpr, RecordHeader, SlotContent}
+import org.opencypher.okapi.relational.impl.table.RecordHeader
 
 private[memcypher] abstract class BinaryOperator extends MemOperator {
 
@@ -114,6 +111,8 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       case (table, SetPropertyItem(key, v, expr)) => constructProperty(v, key, expr, table)(table.header,context)
     }
 
+    //Todo: MemRecords to MemGraph
+
     //straight-forward version (newEntities+their labels & properties)(without use of MemRecords)
     val nodes = newEntities.foldLeft(Seq.empty[MemNode]) {
       (list, b) =>
@@ -141,26 +140,22 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val nodes = newEntities.collect {
       case c@ConstructedNode(Var(name), _, _) => c //
     }
-    var header = RecordHeader.empty;
+    var header = RecordHeader.empty
     val nodeData = nodes.foldLeft(Seq[CypherMap]()) {
       (z, node) => {
-        header ++= RecordHeader.nodeFromSchema(node.v,schema,node.labels.map(_.name.toString))
-        z :+ CypherMap((node.v.name, generateID()), ("labels", node.labels.map(_.name.toString).toSeq)) //ToDo: CypherMap must match with RecordHeader --> way more slots?! (via constructNode method like in openCypher)
+        header ++= RecordHeader.nodeFromSchema(node.v,schema)
+        z :+ CypherMap(node.labels.map(label => node.v.name +":" + label.name -> CypherBoolean(true)).toMap).updated(node.v.name, generateID())
+        //problem: both freshvars in Recordheader --> both vars must have an entry in one Cyphermap?
       }
     }
-
     MemRecords.create(Embeddings(nodeData), header)
   }
 
-  //construct propertytable --> join ? (mehrere sets auf gleiche var = in einer row?)
-  // v.name = sets._.variable (für property) TODO (siehe straight forward)
   def constructProperty(variable: Var, propertyKey: String, propertyValue: Expr, constructedTable: MemRecords)(implicit header: RecordHeader,context: MemRuntimeContext): MemRecords = {
-    val propertyExpression = Property(variable, PropertyKey(propertyKey))(propertyValue.cypherType)
-    val propertySlotContent = ProjectedExpr(propertyExpression)
-    //val updatedData = constructedTable.collect.map(x => {if(x.keys.contains(variable.name)) x.updated(propertyKey,exprToCypherValue(propertyValue))}) // wont work because header is missing
-    val dataToUpdate = constructedTable.data.filter(variable) //todo: let filter work
+    val dataToUpdate = constructedTable.data.filter(IsNotNull(variable)(CTInteger)) //todo: get filter to work (should return CypherMaps with variable as a key in it)
+    val dataWithProperty = dataToUpdate.data.map(_.updated(variable.name+"."+propertyKey,exprToCypherValue(propertyValue)))
 
-    MemRecords.create(constructedTable.data, constructedTable.header)
+    MemRecords.create(dataWithProperty, constructedTable.header)
   }
 
   //helperMethod -- better Way?

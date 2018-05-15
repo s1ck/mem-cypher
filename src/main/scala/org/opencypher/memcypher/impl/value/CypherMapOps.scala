@@ -19,7 +19,7 @@ import org.opencypher.memcypher.impl.MemRuntimeContext
 import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 import org.opencypher.memcypher.impl.value.CypherValueOps._
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
-import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherList, CypherMap, CypherString, CypherValue}
+import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherList, CypherMap, CypherNull, CypherString, CypherValue}
 import org.opencypher.okapi.impl.exception.{IllegalArgumentException, UnsupportedOperationException}
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
@@ -71,6 +71,10 @@ object CypherMapOps {
           logger.info(s"Not: `$innerExpr` in: $map")
           !evaluate(innerExpr)
 
+        case IsNotNull(innerExpr) =>
+          logger.info(s"IsNotNull: `$innerExpr` in: $map")
+          evaluate(innerExpr) != CypherNull
+
         case Ands(exprs) =>
           logger.info(s"Ands: ${exprs.mkString("[", ",", "]")}")
           exprs.map(evaluate).reduce(_ && _)
@@ -117,6 +121,7 @@ object CypherMapOps {
 
     private def nestNode(row: CypherMap, field: Var, header: RecordHeader): CypherValue = {
       val idValue = row(header.slotFor(field).columnName)
+      val columnName = header.slotFor(field).columnName
       idValue match {
         case id: CypherInteger =>
           val labels = header
