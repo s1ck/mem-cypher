@@ -19,6 +19,7 @@ import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.api.{Embeddings, MemCypherGraph, MemCypherSession, MemRecords}
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.graph.{GraphName, QualifiedGraphName}
+import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types.CTInteger
 import org.opencypher.okapi.api.value.CypherValue
 import org.opencypher.okapi.api.value.CypherValue.{CypherMap, CypherValue}
@@ -90,7 +91,7 @@ final case class TabularUnionAll(left: MemOperator, right: MemOperator) extends 
 }
 
 final case class ConstructGraph(left: MemOperator, right: MemOperator, construct: LogicalPatternGraph) extends BinaryOperator {
-  val current_max_id = new AtomicLong();
+  val current_max_id = new AtomicLong()
 
   //toString method from openCypher
   override def toString: String = {
@@ -108,23 +109,22 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
 
 
     val baseTable = left.records; //todo: add allias (use .data.withColumnsRenamed )
-    val entityTable = createEntities(newEntities)
+    val entityTable = createEntities(newEntities,schema)
     val entityTableWithProperties = sets.foldLeft(entityTable) {
-      case (table, SetPropertyItem(key, v, expr)) => constructProperty(v, key, expr, table)
+      case (table, SetPropertyItem(key, v, expr)) => constructProperty(v, key, expr, table)(table.header,context)
     }
 
-    //straight-forward version (without use of MemRecords)
+    //straight-forward version (newEntities+their labels & properties)(without use of MemRecords)
     val nodes = newEntities.foldLeft(Seq.empty[MemNode]) {
       (list, b) =>
         b match {
-          case x: ConstructedNode => {
+          case x: ConstructedNode =>
             val labels = x.labels.map(_.name.toString)
             val properties = sets.filter(_.variable == x.v).foldLeft(CypherMap.empty) {
-              (map, setItem) => map.updated(setItem.propertyKey, exprToCypherValue(setItem.setValue)) //better way to get the value of the Expr?
+              (map, setItem) => map.updated(setItem.propertyKey, exprToCypherValue(setItem.setValue))
             }
             list :+ MemNode(generateID(), labels, properties)
-          }
-            case _ => list //println("not implemented for" + z.getClass)
+          case _ => list //println("not implemented for" + z.getClass)
         }
     }
 
@@ -134,40 +134,40 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
   }
 
   // with grouping make with map (key = variablename|groupedbyvars(List(var,value))
-  def generateID(): Long = current_max_id.incrementAndGet();
+  def generateID(): Long = current_max_id.incrementAndGet()
 
-  def createEntities(newEntities: Set[ConstructedEntity]): MemRecords = {
+  def createEntities(newEntities: Set[ConstructedEntity],schema: Schema): MemRecords = {
+
     val nodes = newEntities.collect {
       case c@ConstructedNode(Var(name), _, _) => c //
     }
-
+    var header = RecordHeader.empty;
     val nodeData = nodes.foldLeft(Seq[CypherMap]()) {
-      (z, node) => z :+ CypherMap(("var_name", node.v.name), ("labels", node.labels.map(_.name.toString).toSeq))
+      (z, node) => {
+        header ++= RecordHeader.nodeFromSchema(node.v,schema,node.labels.map(_.name.toString))
+        z :+ CypherMap((node.v.name, generateID()), ("labels", node.labels.map(_.name.toString).toSeq)) //ToDo: CypherMap must match with RecordHeader --> way more slots?! (via constructNode method like in openCypher)
+      }
     }
 
-    //todo: recordheader with varName,base,var and labels (get from nodes)?
-    MemRecords.create(Embeddings(nodeData), RecordHeader.empty)
+    MemRecords.create(Embeddings(nodeData), header)
   }
 
-  private def constructNode(node: ConstructedNode,
-                            constructedTable: MemRecords
-                           ): Seq[MemNode] = ???
-
   //construct propertytable --> join ? (mehrere sets auf gleiche var = in einer row?)
-  // v.name = sets._.variable (für property) TODO
-  def constructProperty(variable: Var, propertyKey: String, propertyValue: Expr, constructedTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
+  // v.name = sets._.variable (für property) TODO (siehe straight forward)
+  def constructProperty(variable: Var, propertyKey: String, propertyValue: Expr, constructedTable: MemRecords)(implicit header: RecordHeader,context: MemRuntimeContext): MemRecords = {
     val propertyExpression = Property(variable, PropertyKey(propertyKey))(propertyValue.cypherType)
     val propertySlotContent = ProjectedExpr(propertyExpression)
-    val newHeader = RecordHeader.empty;
-    val newData = constructedTable.data;
-    MemRecords.create(newData, newHeader);
+    //val updatedData = constructedTable.collect.map(x => {if(x.keys.contains(variable.name)) x.updated(propertyKey,exprToCypherValue(propertyValue))}) // wont work because header is missing
+    val dataToUpdate = constructedTable.data.filter(variable) //todo: let filter work
+
+    MemRecords.create(constructedTable.data, constructedTable.header)
   }
 
   //helperMethod -- better Way?
   def exprToCypherValue(expr: Expr): CypherValue = expr match {
     case i: IntegerLit => i.v
     case s: StringLit => s.v
-    case l: ListLit => CypherValue.apply(l.v.toList.map(exprToCypherValue(_))) //StringLit cant be converted to a CypherValue? List[Expr] (is already one)
+    case l: ListLit => CypherValue.apply(l.v.toList.map(exprToCypherValue(_)))
     case b: BoolLit => b.v
     case _ => "notImplementedType"
   }
