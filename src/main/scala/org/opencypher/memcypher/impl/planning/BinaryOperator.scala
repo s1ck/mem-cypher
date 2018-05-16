@@ -104,25 +104,27 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val matchTable = left.records
     val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
 
-
-    //todo: add allias (use .data.withColumnsRenamed )
-    val entityTable = createEntities(newEntities,schema,matchTable)
-    val entityTableWithProperties = sets.foldLeft(entityTable) {
-      case (table, SetPropertyItem(key, v, expr)) => constructProperty(v, key, expr, table)(table.header,context)
+    val clonedEntitiesTable = clonedVarsToInputVars.foldLeft(Seq.empty[CypherMap]) {
+      case (clonedEntities, (newVar, oldVar)) => clonedEntities ++ copyContents(oldVar, Option(newVar), matchTable).data.data.map(_.updated(newVar.name, CypherInteger(generateID())))
     }
 
-    //baseTable ... work with copied entities?
-    // consider base var from new Entities?
-    //Todo: MemRecords to MemGraph
+    val entityTable = createEntities(newEntities, schema, matchTable)
+    val entityTableWithProperties = sets.foldLeft(entityTable) {
+      case (table, SetPropertyItem(key, v, expr)) => constructProperty(v, key, expr, table)(table.header, context)
+    }
 
+    val nodesUnited = entityTableWithProperties.data.unionAll(Embeddings(clonedEntitiesTable))
+
+    //Todo: MemRecords to MemGraph (use nestNode --> getHeaderRight!)
+    //---------------------------------------------------------------------
     //straight-forward version (newEntities+their labels & properties)(without use of MemRecords)
-    val nodes = newEntities.foldLeft(Seq.empty[MemNode]) {
+    val nodes_2 = newEntities.foldLeft(Seq.empty[MemNode]) {
       (list, b) =>
         b match {
           case x: ConstructedNode =>
             val labels = x.labels.map(_.name.toString)
             val properties = sets.filter(_.variable == x.v).foldLeft(CypherMap.empty) {
-              (map, setItem) => map.updated(setItem.propertyKey, RichCypherMap(CypherMap.empty).evaluate(setItem.setValue)(RecordHeader.empty,context))
+              (map, setItem) => map.updated(setItem.propertyKey, RichCypherMap(CypherMap.empty).evaluate(setItem.setValue)(RecordHeader.empty, context))
             }
             list :+ MemNode(generateID(), labels, properties)
           case _ => list //println("not implemented for" + z.getClass)
@@ -130,52 +132,82 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     }
 
 
-    val newGraph = MemCypherGraph.create(nodes, Seq[MemRelationship]())
-    MemPhysicalResult(MemRecords.unit(), newGraph, session.qgnGenerator.generate)
+    val newGraph = MemCypherGraph.create(nodes_2, Seq[MemRelationship]())
+    MemPhysicalResult(MemRecords.unit(), newGraph, name)
+  }
+
+  def createEntities(newEntities: Set[ConstructedEntity], schema: Schema, matchTable: MemRecords): MemRecords = {
+
+    val nodes = newEntities.collect {
+      case c@ConstructedNode(_, _, _) => c
+    }
+    var header = RecordHeader.empty
+    val nodeData = nodes.foldLeft(Seq[CypherMap]()) {
+      (generatedNodes, node) => {
+        header ++= RecordHeader.nodeFromSchema(node.v, schema) //useless now?
+        //todo baseNodes.header --> use to union with existing header!
+        val baseNodes = node.baseEntity match {
+          case Some(baseNode) => copyContents(baseNode, Option(node.v), matchTable)
+          case None => MemRecords(Embeddings.empty, RecordHeader.empty)
+        }
+        val newNode = CypherMap(node.labels.map(label => node.v.name + ":" + label.name -> CypherBoolean(true)).toMap)
+        if (baseNodes.data.data.nonEmpty) {
+          var newNodesWithbaseNodes = Seq[CypherMap]()
+          baseNodes.data.data.foreach(copiedNode => {
+            newNode.updated(node.v.name, generateID())
+            newNodesWithbaseNodes :+= (copiedNode ++ newNode)
+          }
+          )
+          generatedNodes ++ newNodesWithbaseNodes
+        }
+        else generatedNodes :+ newNode.updated(node.v.name, generateID())
+        //problem: both freshvars in Recordheader --> both vars must have an entry in one Cyphermap? (with header?)
+      }
+    }
+
+    MemRecords.create(Embeddings(nodeData), header)
   }
 
   // with grouping make with map (key = variablename|groupedbyvars(List(var,value))
   def generateID(): Long = current_max_id.incrementAndGet()
 
-  def createEntities(newEntities: Set[ConstructedEntity], schema: Schema, matchTable: MemRecords): MemRecords = {
+  //return memRecord --> header too
+  //maybe copy id as @oldID for later
+  def copyContents(baseEntity: Var, newEntity: Option[Var], baseRecords: MemRecords): MemRecords = {
+    implicit val header: RecordHeader = baseRecords.header
+    implicit val context: MemRuntimeContext = MemRuntimeContext.empty
 
-    val nodes = newEntities.collect {
-      case c@ConstructedNode(Var(name), _, _) => c //
-    }
-    var header = RecordHeader.empty
-    val nodeData = nodes.foldLeft(Seq[CypherMap]()) {
-      (z, node) => {
-        header ++= RecordHeader.nodeFromSchema(node.v,schema)
-        // todo: check base entitiy (for each match of the base ent. --> create new node )
-        val copiedthings = node.baseEntity match {
-          case Some(baseNode) => copySlotContents(baseNode,matchTable)
-          case None => Seq.empty[CypherMap]
-        }
-        z :+ CypherMap(node.labels.map(label => node.v.name +":" + label.name -> CypherBoolean(true)).toMap).updated(node.v.name, generateID())
-        //problem: both freshvars in Recordheader --> both vars must have an entry in one Cyphermap?
-      }
-    }
-    MemRecords.create(Embeddings(nodeData), header)
-  }
-
-  def constructProperty(variable: Var, propertyKey: String, propertyValue: Expr, constructedTable: MemRecords)(implicit header: RecordHeader,context: MemRuntimeContext): MemRecords = {
-    val dataToUpdate = constructedTable.data.filter(IsNotNull(variable)(CTInteger))
-    val dataWithProperty = dataToUpdate.data.map(_.updated(variable.name+"."+propertyKey, RichCypherMap(CypherMap.empty).evaluate(propertyValue))) //use Columnname funktion? (would get escaped names)
-
-    MemRecords.create(dataWithProperty, constructedTable.header)
-  }
-
-  def copySlotContents(baseEntity: Var, records: MemRecords):Seq[CypherMap] = {
-    val header = records.header
     val origLabelSlots = header.labelSlots(baseEntity).values.toSet
     val origPropertySlots = header.propertySlots(baseEntity).values.toSet
     val copySlotContents = origLabelSlots.map(_.withOwner(baseEntity)).map(_.content)
-    val labelFields = records.data.columns.filter(_.matches(baseEntity.name +":.*")) //todo really? seems stupid
-    val propertyFields = records.data.columns.filter(_.matches(baseEntity.name +"[.].*"))
-    records.data.select(labelFields ++ propertyFields)(header,context = MemRuntimeContext.empty) // right Context?
-    //get keys as set(string for data.select(fields).distinct() -> seq[cyphermap] (change keys from n.age to new_var.age ?!)
-    //records.data.select(ori)
-    //copySlotContents.zip(what)
-    Seq.empty[CypherMap]
+    val explRow = baseRecords.data.data.head
+    val explKey = copySlotContents.head.key
+    val storedCypherValue = RichCypherMap(explRow).evaluate(explKey) //getValue of the row --> possible to get values for all keys nested in expr
+
+
+    val labelFields = baseRecords.data.columns.filter(_.matches(baseEntity.name + ":.*")) //use naming convention x.propertykey & x:label (todo: find better way)
+    val propertyFields = baseRecords.data.columns.filter(_.matches(baseEntity.name + "[.].*"))
+    val fieldsToCopy = labelFields ++ propertyFields
+    val baseData = baseRecords.data.select(fieldsToCopy)
+      .distinct(fieldsToCopy) //right Context?
+
+    val newData = newEntity match {
+      case Some(newEntity) => {
+        val renaming = fieldsToCopy.map(oldName => oldName -> oldName.replaceFirst(baseEntity.name, newEntity.name)).toMap
+        baseData.withColumnsRenamed(renaming)
+      }
+      case None => baseData
+    }
+
+    MemRecords(newData, header)
+  }
+
+  def constructProperty(variable: Var, propertyKey: String, propertyValue: Expr, constructedTable: MemRecords)(implicit header: RecordHeader, context: MemRuntimeContext): MemRecords = {
+    val dataToUpdate = constructedTable.data.filter(IsNotNull(variable)(CTInteger))
+    val dataWithProperty = dataToUpdate.data.map(_.updated(variable.name + "." + propertyKey, RichCypherMap(CypherMap.empty).evaluate(propertyValue))) //use Columnname funktion? (would get escaped names)
+
+    //fixes problem that entities with no new property are left out (find better way!)
+    val dataWithNoProperty = constructedTable.data.data.diff(dataToUpdate.data)
+    MemRecords.create(dataWithProperty ++ dataWithNoProperty, constructedTable.header)
   }
 }
