@@ -19,6 +19,7 @@ import org.opencypher.memcypher.impl.MemRuntimeContext
 import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 import org.opencypher.memcypher.impl.value.CypherValueOps._
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
+import org.opencypher.okapi.api.value.CypherValue
 import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherList, CypherMap, CypherNull, CypherString, CypherValue}
 import org.opencypher.okapi.impl.exception.{IllegalArgumentException, UnsupportedOperationException}
 import org.opencypher.okapi.ir.api.expr._
@@ -92,6 +93,18 @@ object CypherMapOps {
 
         case _: FalseLit =>
           false
+
+        case i: IntegerLit =>
+          i.v
+
+        case s: StringLit =>
+          s.v
+
+        case l: ListLit =>
+          l.v.toList.map(evaluate(_))
+
+        case b: BoolLit =>
+          b.v
 
         case _ =>
           throw IllegalArgumentException("Supported Cypher Expression", expr.getClass.getSimpleName)
