@@ -18,9 +18,9 @@ import java.io.File
 import org.opencypher.memcypher.MemCypherTestSuite
 import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession}
 import org.opencypher.memcypher.support.creation.memcypher.MemCypherTestGraphFactory
-import org.opencypher.okapi.ir.test.support.creation.TestGraphFactory
-import org.opencypher.okapi.tck.test.{ScenariosFor, TCKGraph}
 import org.opencypher.okapi.tck.test.Tags.{BlackList, WhiteList}
+import org.opencypher.okapi.tck.test.{ScenariosFor, TCKGraph}
+import org.opencypher.okapi.testing.propertygraph.CypherTestGraphFactory
 import org.opencypher.tools.tck.api.CypherTCK
 import org.scalatest.Tag
 import org.scalatest.prop.TableDrivenPropertyChecks._
@@ -31,7 +31,7 @@ class TckMemCypherTest extends MemCypherTestSuite {
 
   object TckMemCypher extends Tag("TckMemCypher")
 
-  val defaultFactory: TestGraphFactory[MemCypherSession] = MemCypherTestGraphFactory
+  val defaultFactory: CypherTestGraphFactory[MemCypherSession] = MemCypherTestGraphFactory
 
   private val scenarios = ScenariosFor(getClass.getResource("/scenario_blacklist").getFile)
 

@@ -60,10 +60,10 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
     v: Var,
     header: RecordHeader): MemOperator = Scan(in, v, header)
 
-  override def planSelectFields(
+  override def planSelect(
     in: MemOperator,
-    fields: List[Var],
-    header: RecordHeader): MemOperator = SelectFields(in, fields, header)
+    expressions: List[Expr],
+    header: RecordHeader): MemOperator = Select(in, expressions, header)
 
   override def planAlias(
     in: MemOperator,
@@ -140,4 +140,5 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
   override def planConstructGraph(table: MemOperator, onGraph: MemOperator, construct: LogicalPatternGraph): MemOperator = ???
 
   override def planGraphUnionAll(graphs: List[MemOperator], qgn: QualifiedGraphName): MemOperator = ???
+
 }

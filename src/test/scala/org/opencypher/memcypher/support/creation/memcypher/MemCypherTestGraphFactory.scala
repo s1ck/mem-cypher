@@ -13,15 +13,14 @@
  */
 package org.opencypher.memcypher.support.creation.memcypher
 
-import org.opencypher.okapi.api.graph.PropertyGraph
-import org.opencypher.okapi.ir.test.support.creation.TestGraphFactory
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession}
-import org.opencypher.okapi.testing.propertygraph.TestGraph
+import org.opencypher.okapi.api.graph.PropertyGraph
+import org.opencypher.okapi.testing.propertygraph.{CypherTestGraphFactory, InMemoryTestGraph}
 
-object MemCypherTestGraphFactory extends TestGraphFactory[MemCypherSession] {
+object MemCypherTestGraphFactory extends CypherTestGraphFactory[MemCypherSession] {
 
-  override def apply(propertyGraph: TestGraph)(implicit caps: MemCypherSession): PropertyGraph = {
+  override def apply(propertyGraph: InMemoryTestGraph)(implicit caps: MemCypherSession): PropertyGraph = {
     val nodes = propertyGraph.nodes.map(n => MemNode(n.id, n.labels, n.properties))
     val rels = propertyGraph.relationships.map(r => MemRelationship(r.id, r.source, r.target, r.relType, r.properties))
 
