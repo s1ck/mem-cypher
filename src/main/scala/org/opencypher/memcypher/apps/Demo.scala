@@ -29,9 +29,10 @@ object Demo extends App {
   PrintPhysicalPlan.set()
 
   val query =
-    s"""|Construct New()
+    s"""|Match (n:Tag)--(m:Person)
+        |Construct New(copiedNode Copy of n)  New(ungroupedNode:wow{age:"test"}) New(propertygroupedNode:wow{age:"test",groupby:['m.gender']})
         |RETURN GRAPH""".stripMargin
-  
+
   logger.info(s"Executing query: $query")
 
   implicit val memCypher: MemCypherSession = MemCypherSession.create

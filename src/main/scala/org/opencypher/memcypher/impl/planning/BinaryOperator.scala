@@ -20,10 +20,10 @@ import org.opencypher.memcypher.api.{Embeddings, MemCypherGraph, MemCypherSessio
 import org.opencypher.memcypher.impl.value.CypherMapOps._
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.schema.Schema
-import org.opencypher.okapi.api.types.{CTInteger, CTString, CTWildcard}
+import org.opencypher.okapi.api.types._
 import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherList, CypherMap, CypherString, CypherValue}
 import org.opencypher.okapi.impl.exception.{IllegalArgumentException, NotImplementedException}
-import org.opencypher.okapi.ir.api.Label
+import org.opencypher.okapi.ir.api.{Label, PropertyKey}
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.ir.api.set.SetPropertyItem
 import org.opencypher.okapi.logical.impl.{ConstructedEntity, ConstructedNode, ConstructedRelationship, LogicalPatternGraph}
@@ -89,17 +89,17 @@ final case class TabularUnionAll(left: MemOperator, right: MemOperator) extends 
 }
 
 sealed trait aggregationExtension {
-  def groupBy: Set[Var]
+  def groupBy: Set[Expr]
 
   def aggregatedProperties: Option[Set[SetPropertyItem[Expr]]]
 }
 
 class ConstructNodeExtended(v: Var, labels: Set[Label], baseEntity: Option[Var],
-                            val groupBy: Set[Var],
+                            val groupBy: Set[Expr],
                             val aggregatedProperties: Option[Set[SetPropertyItem[Expr]]]) extends ConstructedNode(v, labels, baseEntity) with aggregationExtension
 
 class ConstructedRelationshipExtended(v: Var, baseEntity: Option[Var], source: Var, target: Var, typ: Option[String],
-                                      val groupBy: Set[Var],
+                                      val groupBy: Set[Expr],
                                       val aggregatedProperties: Option[Set[SetPropertyItem[Expr]]]) extends ConstructedRelationship(v, source, target, typ, baseEntity) with aggregationExtension
 
 
@@ -122,48 +122,93 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
 
 
+    val nodes = newEntities.filter(_ match { case _: ConstructedNode => true case _ => false })
+    val relationships = newEntities.filter(_ match { case _: ConstructedRelationship => true case _ => false })
 
-    //todo: find expr for matchTable.data.project() (how to use generateID inside of Expr?) .. rename vars; put baseEntity also in groupby.. and than ask cause of project; group by with constant? (maybe if potentialgroupingList is no List)
+    //todo: find expr for matchTable.data.project() (how to use generateID inside of Expr?); group by with constant? (maybe if potentialgroupingList is no List)
 
-    val extendedEntities = newEntities.map(entity => {
-      val potentialGrouping = sets.filter(x => (x.variable == entity.v) && (x.propertyKey == "groupby"))
-      var groupByVarSet = Set[Var]()
-      if (potentialGrouping.nonEmpty) {
-        val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(potentialGrouping.head.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr
-        potentialListOfGroupings match {
-          case groupByStringList: CypherList => groupByVarSet = groupByStringList.value.map(x => Var(x.toString())()).toSet //todo: could also be a property & check if it exists in matchTable.columns
-          case x => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + x.getClass.getSimpleName)
-        }
-      }
-      entity match {
-        case n: ConstructedNode => new ConstructNodeExtended(n.v, n.labels, n.baseEntity, groupByVarSet, None)
-        case r: ConstructedRelationship => {
-          groupByVarSet ++= Set(Var(r.source.name)(), Var(r.target.name)()) // relationships implicit grouped by source and target node
-          new ConstructedRelationshipExtended(r.v, r.baseEntity, r.source, r.target, r.typ, groupByVarSet, None)
-        }
-      }
-    }
-    )
+    val extendedNodes = nodes.map(x => createExtendedEntity(x, sets, matchTable))
+    val extendedRelationships = relationships.map(x => createExtendedEntity(x, sets, matchTable))
+    var extendedMatchTable = matchTable
+    extendedNodes.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable, context))
+    extendedRelationships.foreach(entity => extendMatchTable(entity, extendedMatchTable, context)) //only relationship id generated for now
+    val compact_result = extendedMatchTable.data.select(Set("m", "m.gender:STRING", "n", "copiedNode", "ungroupedNode", "propertygroupedNode"))(matchTable.header, context) //selected only important rows for example in demo
 
-    //todo: let ExpressionSeq generate before and save in entity.groupby (alter .groupby to Set[Expr])
-    val entityExpressionsSeq = extendedEntities.map(entity => StringLit(entity.v.name)() +: entity.groupBy.foldLeft(IndexedSeq[Expr]())((z, groupVar) => z :+ StringLit(groupVar.name)() :+ Id(groupVar)())) //generate Expr for every ConstructedEntityExtended
-    //generate expr ... groupby parameter for generateID
-    val matchTableProjectGroupBy = entityExpressionsSeq.map(seq => {
-      val expr = ListLit(seq)()
-      matchTable.data.project(expr, seq.head.withoutType)(matchTable.header, context).select(Set(seq.head.withoutType, "n"))(matchTable.header, context)
-    })
-
-
+    //todo: from MemRecords to MemGraph
     MemPhysicalResult(MemRecords.unit(), MemCypherGraph.empty, name)
   }
 
-  //maybe groupby parameter only Seq[Long] (only one groupby per constructedEntity possible)
-  def generateID(constructedEntityName: String, groupby: Seq[(String, Long)] = Seq()): Long = {
+  def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords, context: MemRuntimeContext): MemRecords = {
+    //only correct for grouped vars without aggregated properties
+    //todo: for constructedRelationship also project of sourceNode & targetNode
+    val newData = matchTable.data.project(ListLit(entity.groupBy.toIndexedSeq)(), entity.v.name)(matchTable.header, context)
+    applyGenerateID(entity.v.name, newData) //update header?
+  }
+
+  def createExtendedEntity(newEntity: ConstructedEntity, sets: List[SetPropertyItem[Expr]], matchTable: MemRecords): ConstructedEntity with aggregationExtension = {
+    val potentialGrouping = sets.filter(x => (x.variable == newEntity.v) && (x.propertyKey == "groupby"))
+    var groupByVarSet = newEntity.baseEntity match {
+      case Some(v) => Set[Expr](v)
+      case None => Set[Expr]()
+    }
+    if (potentialGrouping.nonEmpty) {
+      val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(potentialGrouping.head.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr , maybe sort this list?
+      potentialListOfGroupings match {
+        case groupByStringList: CypherList => groupByVarSet = createGroupByExprSet(groupByStringList, matchTable.columnType)
+        case x => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + x.getClass.getSimpleName) //todo: enable group by constant here
+      }
+    }
+    newEntity match {
+      case n: ConstructedNode => new ConstructNodeExtended(n.v, n.labels, n.baseEntity, groupByVarSet, None)
+      case r: ConstructedRelationship => {
+        groupByVarSet ++= Set(Id(Var(r.source.name)())(), Id(Var(r.target.name)())()) // relationships implicit grouped by source and target node
+        new ConstructedRelationshipExtended(r.v, r.baseEntity, r.source, r.target, r.typ, groupByVarSet, None)
+      }
+    }
+  }
+
+  def createGroupByExprSet(list: CypherList, validColumnns: Map[String, CypherType]): Set[Expr] = {
+    list.value.map(x => {
+      val stringValue = x.toString()
+      if (stringValue.contains('.')) {
+        val tmp = stringValue.split('.')
+        val neededKey = validColumnns.keySet.filter(_.matches(stringValue + ":.++"))
+        if (neededKey.isEmpty) throw new IllegalArgumentException("valid property for groupby", "invalid groupby property " + stringValue)
+        val propertyCypherType = validColumnns.getOrElse(neededKey.head, CTWildcard)
+        Property(Var(tmp(0))(), PropertyKey(tmp(1)))(propertyCypherType)
+      }
+      else if (validColumnns.keySet.contains(x.toString()))
+        Id(Var(stringValue)())()
+      else throw IllegalArgumentException("valid variable for groupby", "invalid groupby variable " + stringValue)
+    }).toSet
+  }
+
+  //todo: get generateID into project-operator expr
+  def applyGenerateID(constructedEntityName: String, table: Embeddings) = {
+    val data = table.data
+    val newdata = data.map(cyphermap => {
+      val value = cyphermap.get(constructedEntityName) //get List generated by groupByExpr
+      val newvalue = value match {
+        case Some(v) => {
+          val what = v match {
+            case x: CypherList => x
+            case _ => CypherList()
+          }
+          val useable = what.value.map(_.toString())
+          CypherInteger(generateID(constructedEntityName, useable))
+        }
+        case None => CypherInteger(-1)
+      }
+      cyphermap.updated(constructedEntityName, newvalue) //replace List-Value with generatedID
+    })
+    MemRecords(Embeddings(newdata), RecordHeader.empty)
+  }
+
+  def generateID(constructedEntityName: String, groupby: List[String] = List()): Long = {
     var key = constructedEntityName
 
     if (groupby.nonEmpty) {
-      val sorted_groupby = groupby.sortWith((x, y) => x._1 < y._1); // groupby a,b should be equal to groupby b,a
-      key += sorted_groupby.foldLeft("")((x, tupel) => x + "|" + tupel._1 + tupel._2); //generate with groupby
+      key += groupby.foldLeft("")((x, based_value) => x + "|" + based_value); //generate with groupby
       if (storedIDs.contains(key)) storedIDs.getOrElse(key, -1)
       else {
         storedIDs += key -> current_max_id.incrementAndGet()

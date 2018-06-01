@@ -70,8 +70,9 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val thrown = intercept[Exception] {
         graph.cypher("MATCH (n)-->(m) CONSTRUCT NEW(x{groupby:['m','z']}) RETURN GRAPH")
       }
+
       // throw error, as grouping variable z is not part of the match
-      thrown.getMessage should be ("invalid set of variables")
+      assert(thrown.getMessage.contains("invalid groupby variable z"))
     }
 
     it("with setting properties") {
