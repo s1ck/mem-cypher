@@ -16,10 +16,10 @@ package org.opencypher.memcypher.impl.value
 import com.typesafe.scalalogging.Logger
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.impl.MemRuntimeContext
+import org.opencypher.memcypher.impl.planning.generateID
 import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 import org.opencypher.memcypher.impl.value.CypherValueOps._
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
-import org.opencypher.okapi.api.value.CypherValue
 import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherList, CypherMap, CypherNull, CypherString, CypherValue}
 import org.opencypher.okapi.impl.exception.{IllegalArgumentException, UnsupportedOperationException}
 import org.opencypher.okapi.ir.api.expr._
@@ -44,10 +44,20 @@ object CypherMapOps {
         case _: Var | _: Param | _: Property | _: HasLabel | _: Type | _: StartNode | _: EndNode =>
           logger.info(s"Direct lookup: Expr `$expr` with column name `${expr.columnName}` in $map")
           map(expr.columnName)
-
+        //also used to generate new IDs for construct here!
         case Id(v) =>
-          logger.info(s"Id lookup: `$v` in $map")
-          evaluate(v)
+          v match{
+            case v:Var => {
+              logger.info(s"Id lookup: `$v` in $map")
+              evaluate(v)
+            }
+            case l:ListLit => {
+              logger.info(s"Id generation: `$l` in $map")
+              val list = evaluate(l).cast[CypherList].value //can be only cypherList as ListLit gets evaluated to Cypherlist
+              generateID.generateID(list.head.toString(),list.tail.map(_.toString())) //maybe make generateID arguments just one list?
+            }
+            case x => throw new IllegalArgumentException("unexpected type for id-expr evaluation "+x.getClass)
+          }
 
         case HasType(rel, relType) =>
           evaluate(Type(rel)()) == CypherString(relType.name)
@@ -87,6 +97,10 @@ object CypherMapOps {
         case GreaterThan(lhs, rhs) =>
           logger.info(s"GreaterThan: `$expr` in: $map")
           evaluate(lhs) > evaluate(rhs)
+
+        case Add(lhs, rhs) =>
+          logger.info(s"Add: `$expr` in: $map")
+          evaluate(lhs) + evaluate(rhs)
 
         case _: TrueLit =>
           true
