@@ -121,26 +121,33 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
 
 
     val extendedEntities = newEntities.map(x => createExtendedEntity(x, sets, matchTable))
-    val extendedNodes = extendedEntities.filter(_ match { case _: ConstructedNodeExtended => true case _ => false })
-    val extendedRelationships = extendedEntities.filter(_ match { case _: ConstructedRelationshipExtended => true case _ => false })
+    val extendedNodes = extendedEntities.collect { case n: ConstructedNodeExtended => n }
+    val extendedRelationships = extendedEntities.collect { case r: ConstructedRelationshipExtended => r }
     var extendedMatchTable = matchTable
-    extendedNodes.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable, context))
-    extendedRelationships.foreach(entity => extendMatchTable(entity, extendedMatchTable, context)) //only relationship id generated for now
-
-    val compact_result = extendedMatchTable.data.select(Set("m", "m.gender:STRING", "n", "copiedNode", "ungroupedNode", "propertygroupedNode", "constantgroup"))(matchTable.header, context) //selected only important rows for example in demo
+    extendedNodes.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context))
+    extendedRelationships.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context)) //only relationship id generated for now
+    val stored_ids = IdGenerator.storedIDs
+    val compact_result = extendedMatchTable.data.select(Set("m", "m.gender:STRING", "n", "copiedNode", "ungroupedNode", "propertygroupedNode", "constantgroup", "testrel", "source(testrel)", "target(testrel)", "type(testrel)"))(matchTable.header, context) //selected only important rows for example in demo
 
     val remaining_sets = sets.filter(_.propertyKey != "groupby") //groupby got evaluated already , todo: evaluate via project op
     //todo: from MemRecords to MemGraph
     MemPhysicalResult(MemRecords.unit(), MemCypherGraph.empty, name)
   }
 
-  def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords, context: MemRuntimeContext): MemRecords = {
+  def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
+    implicit val header = matchTable.header
+
+
     val newData = entity.aggregatedProperties match {
       case None => entity match {
-        case node: ConstructedNode => {
-          matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)(matchTable.header, context)
-        }
-        //case relationship: ConstructedRelationship => matchTable.data //todo: for constructedRelationship also project of sourceNode & targetNode (groupby already implemented)
+        case r: ConstructedRelationshipExtended =>
+          matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
+          .project(Id(r.source)(), "source(" + r.v.name + ")")
+          .project(Id(r.target)(), "target(" + r.v.name + ")")
+          .project(StringLit(r.typ.getOrElse("null"))(), "type(" + r.v.name + ")")
+        case _ => //_:ConstructedNodeExtended throws compiler error "unreachable code"
+          matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
+
       }
       case Some(setAggProp) => ???
     }
@@ -157,9 +164,9 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     if (potentialGrouping.nonEmpty) {
       val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(potentialGrouping.head.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr , maybe sort this list?
       potentialListOfGroupings match {
-        case groupByStringList: CypherList => groupByVarSet ++= createGroupByExprSet(groupByStringList, matchTable.columnType)
+        case groupByStringList: CypherList => groupByVarSet ++= listToGroupByExprSet(groupByStringList, matchTable.columnType)
         case _: CypherString | _: CypherInteger | _: CypherBoolean => groupByVarSet += StringLit("constant")(CTString) //groupby constant --> only one entity created
-        case x => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + x.getClass.getSimpleName) //todo: enable group by constant here
+        case x => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + x.getClass.getSimpleName)
       }
     }
     newEntity match {
@@ -170,14 +177,14 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       }
     }
   }
-
-  def createGroupByExprSet(list: CypherList, validColumnns: Map[String, CypherType]): Set[Expr] = {
+  //todo: parse relationship specific groupby like source,target,type
+  def listToGroupByExprSet(list: CypherList, validColumnns: Map[String, CypherType]): Set[Expr] = {
     list.value.map(x => {
       val stringValue = x.toString()
       if (stringValue.contains('.')) {
         val tmp = stringValue.split('.')
         val neededKey = validColumnns.keySet.filter(_.matches(stringValue + ":.++"))
-        if (neededKey.isEmpty) throw new IllegalArgumentException("valid property for groupby", "invalid groupby property " + stringValue)
+        if (neededKey.isEmpty) throw IllegalArgumentException("valid property for groupby", "invalid groupby property " + stringValue)
         val propertyCypherType = validColumnns.getOrElse(neededKey.head, CTWildcard)
         Property(Var(tmp(0))(), PropertyKey(tmp(1)))(propertyCypherType)
       }
@@ -188,9 +195,9 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
   }
 }
 
-object generateID {
+object IdGenerator {
   private val current_max_id = new AtomicLong()
-  private var storedIDs = Map[String, Long]()
+  var storedIDs = Map[String, Long]()
 
   def generateID(constructedEntityName: String, groupby: List[String] = List()): Long = {
     var key = constructedEntityName
@@ -210,5 +217,5 @@ object generateID {
     }
   }
 
-  def clearIdMap() = storedIDs.empty //needed, so that next query works on empty storedIDs Map?
+  def clearIdMap(): Map[String, Long] = storedIDs.empty //needed, so that next query works on empty storedIDs Map?
 }
