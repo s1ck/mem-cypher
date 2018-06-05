@@ -133,18 +133,19 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     //todo: from MemRecords to MemGraph
     MemPhysicalResult(MemRecords.unit(), MemCypherGraph.empty, name)
   }
-  //todo: maybe project in groupby attribute the groupby list?
+
+  //todo: maybe project in groupby attribute the groupby listvalues?
   def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
-    implicit val header = matchTable.header
+    implicit val header: RecordHeader = matchTable.header
 
 
     val newData = entity.aggregatedProperties match {
       case None => entity match {
         case r: ConstructedRelationshipExtended =>
           matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
-          .project(Id(r.source)(), "source(" + r.v.name + ")")
-          .project(Id(r.target)(), "target(" + r.v.name + ")")
-          .project(StringLit(r.typ.getOrElse("null"))(), "type(" + r.v.name + ")")
+            .project(Id(r.source)(), "source(" + r.v.name + ")")
+            .project(Id(r.target)(), "target(" + r.v.name + ")")
+            .project(StringLit(r.typ.getOrElse("null"))(), "type(" + r.v.name + ")")
         case _ => //_:ConstructedNodeExtended throws compiler error "unreachable code"
           matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
 
@@ -177,36 +178,40 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       }
     }
   }
-  //todo: rename things !
-  def listToGroupByExprSet(list: CypherList, validColumnns: Map[String, CypherType]): Set[Expr] = {
+
+  //todo: rename things!
+  def listToGroupByExprSet(list: CypherList, validColumns: Map[String, CypherType]): Set[Expr] = {
     list.value.map(x => {
       val stringValue = x.toString()
       if (stringValue.contains('.')) {
-        val tmp = stringValue.split('.')
-        val neededKey = validColumnns.keySet.filter(_.matches(stringValue + ":.++"))
-        if (neededKey.isEmpty) throw IllegalArgumentException("valid property for groupby", "invalid groupby property " + stringValue)
-        val propertyCypherType = validColumnns.getOrElse(neededKey.head, CTWildcard)
+        val tmp = stringValue.split('.') //extract variable name (tmp(0)) and property name (tmp(1)) from variableName.propertyName
+        val matchingKeys = validColumns.keySet.filter(_.matches(stringValue + ":.++"))
+        if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + stringValue)
+        val propertyCypherType = validColumns.getOrElse(matchingKeys.head, CTWildcard)
         Property(Var(tmp(0))(), PropertyKey(tmp(1)))(propertyCypherType)
       }
-      else if(stringValue.matches("type\\Q(\\E.*\\Q)\\E")) {//check if type(...)
-          val varName = stringValue.substring(5,stringValue.length-1)
-          Type(Var(varName)())() }
-          else if (validColumnns.keySet.contains(x.toString()))
-              Id(Var(stringValue)())()
-              else throw IllegalArgumentException("valid variable for groupby", "invalid groupby variable " + stringValue)
+      else if (validColumns.keySet.contains(stringValue)) {
+        //check if type(...)
+        if (stringValue.matches("type\\Q(\\E.*\\Q)\\E")) {
+          val varName = stringValue.substring(5, stringValue.length - 1) // string "type(" has a length of 5
+          Type(Var(varName)())()
+        }
+        else Id(Var(stringValue)())()
+      } //must be a var then
+      else throw IllegalArgumentException("valid parameter for groupBy", "invalid groupBy parameter " + stringValue)
     }).toSet
   }
 }
 
 object IdGenerator {
   private val current_max_id = new AtomicLong()
-  var storedIDs = Map[String, Long]()
+  var storedIDs: Map[String, Long] = Map[String, Long]()
 
-  def generateID(constructedEntityName: String, groupby: List[String] = List()): Long = {
+  def generateID(constructedEntityName: String, groupBy: List[String] = List()): Long = {
     var key = constructedEntityName
 
-    if (groupby.nonEmpty) {
-      key += groupby.foldLeft("")((x, based_value) => x + "|" + based_value); //generate with groupby
+    if (groupBy.nonEmpty) {
+      key += groupBy.foldLeft("")((x, based_value) => x + "|" + based_value); //generate with groupby
       if (storedIDs.contains(key)) storedIDs.getOrElse(key, -1)
       else {
         storedIDs += key -> current_max_id.incrementAndGet()
@@ -215,7 +220,7 @@ object IdGenerator {
     }
     else {
       val newID = current_max_id.incrementAndGet()
-      storedIDs += key + newID -> newID //everytime id fct for ungrouped var gets called --> new ID
+      storedIDs += key + newID -> newID //every time id fct for ungrouped var gets called --> new ID
       newID
     }
   }
