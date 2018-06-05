@@ -133,7 +133,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     //todo: from MemRecords to MemGraph
     MemPhysicalResult(MemRecords.unit(), MemCypherGraph.empty, name)
   }
-
+  //todo: maybe project in groupby attribute the groupby list?
   def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
     implicit val header = matchTable.header
 
@@ -177,7 +177,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       }
     }
   }
-  //todo: parse relationship specific groupby like source,target,type
+  //todo: rename things !
   def listToGroupByExprSet(list: CypherList, validColumnns: Map[String, CypherType]): Set[Expr] = {
     list.value.map(x => {
       val stringValue = x.toString()
@@ -188,9 +188,12 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
         val propertyCypherType = validColumnns.getOrElse(neededKey.head, CTWildcard)
         Property(Var(tmp(0))(), PropertyKey(tmp(1)))(propertyCypherType)
       }
-      else if (validColumnns.keySet.contains(x.toString()))
-        Id(Var(stringValue)())()
-      else throw IllegalArgumentException("valid variable for groupby", "invalid groupby variable " + stringValue)
+      else if(stringValue.matches("type\\Q(\\E.*\\Q)\\E")) {//check if type(...)
+          val varName = stringValue.substring(5,stringValue.length-1)
+          Type(Var(varName)())() }
+          else if (validColumnns.keySet.contains(x.toString()))
+              Id(Var(stringValue)())()
+              else throw IllegalArgumentException("valid variable for groupby", "invalid groupby variable " + stringValue)
     }).toSet
   }
 }
