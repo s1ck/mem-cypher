@@ -21,7 +21,7 @@ import org.opencypher.memcypher.impl.value.CypherMapOps._
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types._
-import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherList, CypherMap, CypherString}
+import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherList, CypherMap, CypherString, CypherValue}
 import org.opencypher.okapi.impl.exception.{IllegalArgumentException, NotImplementedException}
 import org.opencypher.okapi.ir.api.{Label, PropertyKey}
 import org.opencypher.okapi.ir.api.expr._
@@ -134,10 +134,9 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     MemPhysicalResult(MemRecords.unit(), MemCypherGraph.empty, name)
   }
 
-  //todo: maybe project in groupby attribute the groupby listvalues?
+  //todo: maybe project in groupby attribute the evaluated groupbyExpr?
   def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
     implicit val header: RecordHeader = matchTable.header
-
 
     val newData = entity.aggregatedProperties match {
       case None => entity match {
@@ -165,8 +164,9 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     if (potentialGrouping.nonEmpty) {
       val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(potentialGrouping.head.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr , maybe sort this list?
       potentialListOfGroupings match {
-        case groupByStringList: CypherList => groupByVarSet ++= listToGroupByExprSet(groupByStringList, matchTable.columnType)
-        case _: CypherString | _: CypherInteger | _: CypherBoolean => groupByVarSet += StringLit("constant")(CTString) //groupby constant --> only one entity created
+        case groupByStringList: CypherList => groupByVarSet ++= groupByStringList.value.map(y => cypherValueToGroupByExpr(y, matchTable.columnType)) //listToGroupByExprSet(groupByStringList, matchTable.columnType)
+        case s: CypherString => groupByVarSet += cypherValueToGroupByExpr(s, matchTable.columnType)
+        case _: CypherInteger | _: CypherBoolean => groupByVarSet += StringLit("constant")(CTString) //groupby constant --> only one entity created
         case x => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + x.getClass.getSimpleName)
       }
     }
@@ -179,27 +179,25 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     }
   }
 
-  //todo: rename things!
-  def listToGroupByExprSet(list: CypherList, validColumns: Map[String, CypherType]): Set[Expr] = {
-    list.value.map(x => {
-      val stringValue = x.toString()
-      if (stringValue.contains('.')) {
-        val tmp = stringValue.split('.') //extract variable name (tmp(0)) and property name (tmp(1)) from variableName.propertyName
-        val matchingKeys = validColumns.keySet.filter(_.matches(stringValue + ":.++"))
-        if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + stringValue)
-        val propertyCypherType = validColumns.getOrElse(matchingKeys.head, CTWildcard)
-        Property(Var(tmp(0))(), PropertyKey(tmp(1)))(propertyCypherType)
+  //converts a CypherValue to a Property,Type or Id Expr
+  def cypherValueToGroupByExpr(value: CypherValue, validColumns: Map[String, CypherType]): Expr = {
+    val stringValue = value.toString()
+    if (stringValue.contains('.')) {
+      val tmp = stringValue.split('.') //extract variable name (tmp(0)) and property name (tmp(1)) from variableName.propertyName
+      val matchingKeys = validColumns.keySet.filter(_.matches(stringValue + ":.++"))
+      if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + stringValue)
+      val propertyCypherType = validColumns.getOrElse(matchingKeys.head, CTWildcard)
+      Property(Var(tmp(0))(), PropertyKey(tmp(1)))(propertyCypherType)
+    }
+    else if (validColumns.keySet.contains(stringValue)) {
+      //check if type(...)
+      if (stringValue.matches("type\\Q(\\E.*\\Q)\\E")) {
+        val varName = stringValue.substring(5, stringValue.length - 1) // string "type(" has a length of 5
+        Type(Var(varName)())()
       }
-      else if (validColumns.keySet.contains(stringValue)) {
-        //check if type(...)
-        if (stringValue.matches("type\\Q(\\E.*\\Q)\\E")) {
-          val varName = stringValue.substring(5, stringValue.length - 1) // string "type(" has a length of 5
-          Type(Var(varName)())()
-        }
-        else Id(Var(stringValue)())()
-      } //must be a var then
-      else throw IllegalArgumentException("valid parameter for groupBy", "invalid groupBy parameter " + stringValue)
-    }).toSet
+      else Id(Var(stringValue)())()
+    } //must be a var then
+    else throw IllegalArgumentException("valid parameter for groupBy", "invalid groupBy parameter " + stringValue)
   }
 }
 
