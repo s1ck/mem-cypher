@@ -127,7 +127,8 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     extendedNodes.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context))
     extendedRelationships.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context)) //only relationship id generated for now
     val stored_ids = IdGenerator.storedIDs
-    val compact_result = extendedMatchTable.data.select(Set("m", "m.gender:STRING", "n", "copiedNode", "ungroupedNode", "propertygroupedNode", "constantgroup", "testrel", "source(testrel)", "target(testrel)", "type(testrel)"))(matchTable.header, context) //selected only important rows for example in demo
+    //selected only important rows for example in demo
+    val compact_result = extendedMatchTable.data.select(Set("p1.city:STRING", "p1.gender:STRING", "rel.since:INTEGER", "testrel", "source(testRel)", "target(testRel)"))(matchTable.header, context)
 
     val remaining_sets = sets.filter(_.propertyKey != "groupby") //groupby got evaluated already , todo: evaluate via project op
     //todo: from MemRecords to MemGraph
@@ -155,6 +156,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     MemRecords(newData, header)
   }
 
+  //todo: parse aggregatedProperties
   def createExtendedEntity(newEntity: ConstructedEntity, sets: List[SetPropertyItem[Expr]], matchTable: MemRecords): ConstructedEntity with aggregationExtension = {
     val potentialGrouping = sets.filter(x => (x.variable == newEntity.v) && (x.propertyKey == "groupby"))
     var groupByVarSet = newEntity.baseEntity match {
@@ -167,37 +169,34 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
         case groupByStringList: CypherList => groupByVarSet ++= groupByStringList.value.map(y => cypherValueToGroupByExpr(y, matchTable.columnType)) //listToGroupByExprSet(groupByStringList, matchTable.columnType)
         case s: CypherString => groupByVarSet += cypherValueToGroupByExpr(s, matchTable.columnType)
         case _: CypherInteger | _: CypherBoolean => groupByVarSet += StringLit("constant")(CTString) //groupby constant --> only one entity created
-        case x => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + x.getClass.getSimpleName)
+        case error => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + error.getClass.getSimpleName)
       }
     }
     newEntity match {
       case n: ConstructedNode => new ConstructedNodeExtended(n.v, n.labels, n.baseEntity, groupByVarSet, None)
-      case r: ConstructedRelationship => {
-        groupByVarSet ++= Set(Id(Var(r.source.name)())(), Id(Var(r.target.name)())()) // relationships implicit grouped by source and target node
+      case r: ConstructedRelationship =>
+        groupByVarSet ++= Set(Id(r.source)(), Id(r.target)()) // relationships implicit grouped by source and target node
         new ConstructedRelationshipExtended(r.v, r.baseEntity, r.source, r.target, r.typ, groupByVarSet, None)
-      }
     }
   }
 
-  //converts a CypherValue to a Property,Type or Id Expr
+  //converts a CypherValue to a Property,Type or Id Expr ; todo: validColumnsMap is empty if no match found
   def cypherValueToGroupByExpr(value: CypherValue, validColumns: Map[String, CypherType]): Expr = {
-    val stringValue = value.toString()
-    if (stringValue.contains('.')) {
-      val tmp = stringValue.split('.') //extract variable name (tmp(0)) and property name (tmp(1)) from variableName.propertyName
-      val matchingKeys = validColumns.keySet.filter(_.matches(stringValue + ":.++"))
-      if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + stringValue)
-      val propertyCypherType = validColumns.getOrElse(matchingKeys.head, CTWildcard)
-      Property(Var(tmp(0))(), PropertyKey(tmp(1)))(propertyCypherType)
+    value.toString() match {
+      case propertyName if propertyName.contains('.') =>
+        val tmp = propertyName.split('.') //extract variable name (tmp(0)) and property name (tmp(1)) from variableName.propertyName
+        val matchingKeys = validColumns.keySet.filter(_.matches(propertyName + ":.++"))
+        if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + propertyName)
+        val propertyCypherType = validColumns.getOrElse(matchingKeys.head, CTWildcard)
+        Property(Var(tmp(0))(), PropertyKey(tmp(1)))(propertyCypherType)
+      case validParameter if validColumns.keySet.contains(validParameter) =>
+        if (validParameter.matches("type\\Q(\\E.*\\Q)\\E")) {
+          val varName = validParameter.substring(5, validParameter.length - 1) // string "type(" has a length of 5
+          Type(Var(varName)())()
+        }
+        else Id(Var(validParameter)())()
+      case error => throw IllegalArgumentException("valid parameter for groupBy", "invalid groupBy parameter " + error)
     }
-    else if (validColumns.keySet.contains(stringValue)) {
-      //check if type(...)
-      if (stringValue.matches("type\\Q(\\E.*\\Q)\\E")) {
-        val varName = stringValue.substring(5, stringValue.length - 1) // string "type(" has a length of 5
-        Type(Var(varName)())()
-      }
-      else Id(Var(stringValue)())()
-    } //must be a var then
-    else throw IllegalArgumentException("valid parameter for groupBy", "invalid groupBy parameter " + stringValue)
   }
 }
 
