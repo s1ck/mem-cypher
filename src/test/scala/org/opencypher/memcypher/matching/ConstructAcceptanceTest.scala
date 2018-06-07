@@ -20,7 +20,7 @@ import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.ir.api.Label
 
 class ConstructAcceptanceTest extends MemCypherTestSuite {
-  //TODO: fix label test (result return set of labels but expected set of strings in test
+
   describe("node-constructs") {
 
     it("without unnamed construct-variable")
@@ -64,6 +64,22 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       result.getGraph.nodes("n").collect.length should be (2)
     }
 
+    it("with group by property") {
+      val graph = initGraph("CREATE (:Person{age:18}),(:Person{age:18}),(:Person{age:20})")
+      val result = graph.cypher("MATCH (n) CONSTRUCT NEW(x{groupby:'n.age'}) RETURN GRAPH")
+
+      //result should construct 2 new nodes (one for (a,b) and another one for (b,a))
+      result.getGraph.nodes("n").collect.length should be (2)
+    }
+
+    it("with group by constant") {
+      val graph = initGraph("CREATE (:Person{age:18}),(:Person{age:18}),(:Person{age:20})")
+      val result = graph.cypher("MATCH (n) CONSTRUCT NEW(x{groupby:1}) RETURN GRAPH")
+
+      //result should construct 2 new nodes (one for (a,b) and another one for (b,a))
+      result.getGraph.nodes("n").collect.length should be (1)
+    }
+
     it("with group by invalid set of variables"){
       val graph = initGraph("CREATE (a:Person)-[:likes]->(b:Car)-[:boughtby]->(a), (a)-[:owns]->(b)")
 
@@ -72,7 +88,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       }
 
       // throw error, as grouping variable z is not part of the match
-      assert(thrown.getMessage.contains("invalid groupby variable z"))
+      assert(thrown.getMessage.contains("invalid groupBy parameter z"))
     }
 
     it("with setting properties") {
