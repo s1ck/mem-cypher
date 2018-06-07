@@ -156,7 +156,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     MemRecords(newData, header)
   }
 
-  //todo: parse aggregatedProperties
+
   def createExtendedEntity(newEntity: ConstructedEntity, sets: List[SetPropertyItem[Expr]], matchTable: MemRecords): ConstructedEntity with aggregationExtension = {
     val potentialGrouping = sets.filter(x => (x.variable == newEntity.v) && (x.propertyKey == "groupby"))
     var groupByVarSet = newEntity.baseEntity match {
@@ -166,12 +166,14 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     if (potentialGrouping.nonEmpty) {
       val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(potentialGrouping.head.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr , maybe sort this list?
       potentialListOfGroupings match {
-        case groupByStringList: CypherList => groupByVarSet ++= groupByStringList.value.map(y => cypherValueToGroupByExpr(y, matchTable.columnType)) //listToGroupByExprSet(groupByStringList, matchTable.columnType)
-        case s: CypherString => groupByVarSet += cypherValueToGroupByExpr(s, matchTable.columnType)
+        case groupByStringList: CypherList => groupByVarSet ++= groupByStringList.value.map(y => stringToExpr(y.toString(), matchTable.columnType))
+        case s: CypherString => groupByVarSet += stringToExpr(s.toString(), matchTable.columnType)
         case _: CypherInteger | _: CypherBoolean => groupByVarSet += StringLit("constant")(CTString) //groupby constant --> only one entity created
         case error => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + error.getClass.getSimpleName)
       }
     }
+
+    //todo: parse aggregatedProperties
     newEntity match {
       case n: ConstructedNode => new ConstructedNodeExtended(n.v, n.labels, n.baseEntity, groupByVarSet, None)
       case r: ConstructedRelationship =>
@@ -180,22 +182,21 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     }
   }
 
-  //converts a CypherValue to a Property,Type or Id Expr ; todo: validColumnsMap is empty if no match found
-  def cypherValueToGroupByExpr(value: CypherValue, validColumns: Map[String, CypherType]): Expr = {
-    value.toString() match {
-      case propertyName if propertyName.contains('.') =>
-        val tmp = propertyName.split('.') //extract variable name (tmp(0)) and property name (tmp(1)) from variableName.propertyName
-        val matchingKeys = validColumns.keySet.filter(_.matches(propertyName + ":.++"))
-        if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + propertyName)
+  //converts a string to a Property,Type or Id Expr ; todo: validColumnsMap is empty if no match found
+  def stringToExpr(value: String, validColumns: Map[String, CypherType]): Expr = {
+    val propertyPattern = "(.*)\\Q.\\E(.*)".r
+    val typePattern = "type\\Q(\\E(.*)\\Q)\\E".r
+
+    value match {
+      case propertyPattern(varName, propertyName) =>
+        val matchingKeys = validColumns.keySet.filter(_.matches(value + ":.++"))
+        if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + value)
         val propertyCypherType = validColumns.getOrElse(matchingKeys.head, CTWildcard)
-        Property(Var(tmp(0))(), PropertyKey(tmp(1)))(propertyCypherType)
-      case validParameter if validColumns.keySet.contains(validParameter) =>
-        if (validParameter.matches("type\\Q(\\E.*\\Q)\\E")) {
-          val varName = validParameter.substring(5, validParameter.length - 1) // string "type(" has a length of 5
-          Type(Var(varName)())()
-        }
-        else Id(Var(validParameter)())()
-      case error => throw IllegalArgumentException("valid parameter for groupBy", "invalid groupBy parameter " + error)
+        Property(Var(varName)(), PropertyKey(propertyName))(propertyCypherType)
+      case typePattern(validTypeParameter) if validColumns.keySet.contains(value) =>
+        Type(Var(validTypeParameter)())()
+      case validVarParameter if validColumns.keySet.contains(validVarParameter) => Id(Var(validVarParameter)())()
+      case _ => throw IllegalArgumentException("valid parameter for groupBy", "invalid groupBy parameter " + value)
     }
   }
 }
