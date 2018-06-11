@@ -195,11 +195,11 @@ case class RemoveAliases(
     MemPhysicalResult(MemRecords.create(newData, header), prev.workingGraph, prev.workingGraphName)
   }
 }
-
+//returns MemRecords to (for testing purposes)
 final case class ReturnGraph(in:MemOperator) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-    MemPhysicalResult(MemRecords.unit()(prev.workingGraph.session),prev.workingGraph,prev.workingGraphName)
+    MemPhysicalResult(prev.records,prev.workingGraph,prev.workingGraphName)
   }
 
   override def header: RecordHeader = RecordHeader.empty

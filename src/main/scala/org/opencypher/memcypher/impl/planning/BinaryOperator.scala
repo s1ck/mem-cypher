@@ -119,7 +119,12 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val matchTable = left.records
     val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
 
-
+    val constructHeader = newEntities.foldLeft(RecordHeader.empty) { (head, entity) =>
+      head ++ (entity match {
+        case _: ConstructedNode => RecordHeader.nodeFromSchema(entity.v, schema)
+        case _: ConstructedRelationship => RecordHeader.relationshipFromSchema(entity.v, schema)
+      })
+    }
     val extendedEntities = newEntities.map(x => createExtendedEntity(x, sets, matchTable))
     val extendedNodes = extendedEntities.collect { case n: ConstructedNodeExtended => n }
     val extendedRelationships = extendedEntities.collect { case r: ConstructedRelationshipExtended => r }
@@ -128,11 +133,15 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     extendedRelationships.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context)) //only relationship id generated for now
     val stored_ids = IdGenerator.storedIDs
     //selected only important rows for example in demo
-    val compact_result = extendedMatchTable.data.select(Set("p1.city:STRING", "p1.gender:STRING", "rel.since:INTEGER", "testrel", "source(testRel)", "target(testRel)"))(matchTable.header, context)
+    val important_columns = extendedMatchTable.columnType.keySet.diff(matchTable.columnType.keySet)
+
+    val compact_result = extendedMatchTable.data.select(important_columns)(constructHeader, context)
 
     val remaining_sets = sets.filter(_.propertyKey != "groupby") //groupby got evaluated already , todo: evaluate via project op
+    //val result = remaining_sets.foldLeft(compact_result){(table,item) => table.project(item.setValue,item.variable.name+"."+item.propertyKey+":STRING")(constructHeader,context)}
     //todo: from MemRecords to MemGraph
-    MemPhysicalResult(MemRecords.unit(), MemCypherGraph.empty, name)
+    //todo: construct header
+    MemPhysicalResult(MemRecords(compact_result,constructHeader), MemCypherGraph.empty, name)
   }
 
   //todo: maybe project in groupby attribute the evaluated groupbyExpr? , uncomment code when aggregatedProperties are considered
@@ -141,18 +150,17 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
 
     val newData = /*entity.aggregatedProperties match {
       case None =>*/ entity match {
-        case r: ConstructedRelationshipExtended =>
-          matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
-            .project(Id(r.source)(), "source(" + r.v.name + ")")
-            .project(Id(r.target)(), "target(" + r.v.name + ")")
-            .project(StringLit(r.typ.getOrElse("null"))(), "type(" + r.v.name + ")")
-        case _ => //_:ConstructedNodeExtended throws compiler error "unreachable code"  //todo: project labels
-          matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
+      case r: ConstructedRelationshipExtended =>
+        matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
+          .project(Id(r.source)(), "source(" + r.v.name + ")")
+          .project(Id(r.target)(), "target(" + r.v.name + ")")
+          .project(StringLit(r.typ.getOrElse("null"))(), "type(" + r.v.name + ")")
+      case _ => //_:ConstructedNodeExtended throws compiler error "unreachable code"  //todo: project labels
+        matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
 
-      }
-      /*case Some(setAggProp) =>
-    }*/
-
+    }
+    /*case Some(setAggProp) =>
+  }*/
     MemRecords(newData, header)
   }
 
@@ -174,15 +182,15 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     }
 
     //aggregatedPatter now twice checked
-    val potentialAggregations = sets.foldLeft(Set[SetPropertyItem[Expr]]()){(z,item) =>
-      if(item.variable == newEntity.v)
+    val potentialAggregations = sets.foldLeft(Set[SetPropertyItem[Expr]]()) { (z, item) =>
+      if (item.variable == newEntity.v)
         item.setValue match {
-          case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => z + SetPropertyItem(item.propertyKey,item.variable,stringToExpr(s.v,matchTable.columnType))
+          case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => z + SetPropertyItem(item.propertyKey, item.variable, stringToExpr(s.v, matchTable.columnType))
           case _ => z
         }
       else z
     }
-    val optionAggregations = if(potentialAggregations.isEmpty) None
+    val optionAggregations = if (potentialAggregations.isEmpty) None
     else Some(potentialAggregations) //needed?
 
     newEntity match {
@@ -200,14 +208,14 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val aggregationPattern = "(count|sum|min|max|collect)\\Q(\\E(distinct )?(.*)\\Q)\\E".r //move in extra function or change error messages
     //todo: find bug in regExp (found?!)
     value match {
-      case aggregationPattern(aggr,distinct,inner) =>
-        val innerExpr = stringToExpr(inner,validColumns)
+      case aggregationPattern(aggr, distinct, inner) =>
+        val innerExpr = stringToExpr(inner, validColumns)
         aggr match {
-          case "count" => Count(innerExpr,(distinct != null))()
+          case "count" => Count(innerExpr, (distinct != null))()
           case "sum" => Sum(innerExpr)()
           case "min" => Min(innerExpr)()
           case "max" => Max(innerExpr)()
-          case "collect" => Collect(innerExpr,(distinct != null))()
+          case "collect" => Collect(innerExpr, (distinct != null))()
           case unknown => throw NotImplementedException(unknown + "aggregator not implemented yet")
         }
       case propertyPattern(varName, propertyName) =>
