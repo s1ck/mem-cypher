@@ -135,23 +135,23 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     MemPhysicalResult(MemRecords.unit(), MemCypherGraph.empty, name)
   }
 
-  //todo: maybe project in groupby attribute the evaluated groupbyExpr?
+  //todo: maybe project in groupby attribute the evaluated groupbyExpr? , uncomment code when aggregatedProperties are considered
   def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
     implicit val header: RecordHeader = matchTable.header
 
-    val newData = entity.aggregatedProperties match {
-      case None => entity match {
+    val newData = /*entity.aggregatedProperties match {
+      case None =>*/ entity match {
         case r: ConstructedRelationshipExtended =>
           matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
             .project(Id(r.source)(), "source(" + r.v.name + ")")
             .project(Id(r.target)(), "target(" + r.v.name + ")")
             .project(StringLit(r.typ.getOrElse("null"))(), "type(" + r.v.name + ")")
-        case _ => //_:ConstructedNodeExtended throws compiler error "unreachable code"
+        case _ => //_:ConstructedNodeExtended throws compiler error "unreachable code"  //todo: project labels
           matchTable.data.project(Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())(), entity.v.name)
 
       }
-      case Some(setAggProp) => ???
-    }
+      /*case Some(setAggProp) =>
+    }*/
 
     MemRecords(newData, header)
   }
@@ -167,27 +167,49 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(potentialGrouping.head.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr , maybe sort this list?
       potentialListOfGroupings match {
         case groupByStringList: CypherList => groupByVarSet ++= groupByStringList.value.map(y => stringToExpr(y.toString(), matchTable.columnType))
-        case s: CypherString => groupByVarSet += stringToExpr(s.toString(), matchTable.columnType)
+        case s: CypherString => groupByVarSet += stringToExpr(s.value, matchTable.columnType)
         case _: CypherInteger | _: CypherBoolean => groupByVarSet += StringLit("constant")(CTString) //groupby constant --> only one entity created
         case error => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + error.getClass.getSimpleName)
       }
     }
 
-    //todo: parse aggregatedProperties
+    //aggregatedPatter now twice checked
+    val potentialAggregations = sets.foldLeft(Set[SetPropertyItem[Expr]]()){(z,item) =>
+      if(item.variable == newEntity.v)
+        item.setValue match {
+          case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => z + SetPropertyItem(item.propertyKey,item.variable,stringToExpr(s.v,matchTable.columnType))
+          case _ => z
+        }
+      else z
+    }
+    val optionAggregations = if(potentialAggregations.isEmpty) None
+    else Some(potentialAggregations) //needed?
+
     newEntity match {
-      case n: ConstructedNode => new ConstructedNodeExtended(n.v, n.labels, n.baseEntity, groupByVarSet, None)
+      case n: ConstructedNode => new ConstructedNodeExtended(n.v, n.labels, n.baseEntity, groupByVarSet, optionAggregations)
       case r: ConstructedRelationship =>
         groupByVarSet ++= Set(Id(r.source)(), Id(r.target)()) // relationships implicit grouped by source and target node
-        new ConstructedRelationshipExtended(r.v, r.baseEntity, r.source, r.target, r.typ, groupByVarSet, None)
+        new ConstructedRelationshipExtended(r.v, r.baseEntity, r.source, r.target, r.typ, groupByVarSet, optionAggregations)
     }
   }
 
-  //converts a string to a Property,Type or Id Expr ; todo: validColumnsMap is empty if no match found
+  //converts a string to a Property,Type or Id Expr ; todo: validColumnsMap is empty if no match found?
   def stringToExpr(value: String, validColumns: Map[String, CypherType]): Expr = {
     val propertyPattern = "(.*)\\Q.\\E(.*)".r
     val typePattern = "type\\Q(\\E(.*)\\Q)\\E".r
-
+    val aggregationPattern = "(count|sum|min|max|collect)\\Q(\\E(distinct )?(.*)\\Q)\\E".r //move in extra function or change error messages
+    //todo: find bug in regExp (found?!)
     value match {
+      case aggregationPattern(aggr,distinct,inner) =>
+        val innerExpr = stringToExpr(inner,validColumns)
+        aggr match {
+          case "count" => Count(innerExpr,(distinct != null))()
+          case "sum" => Sum(innerExpr)()
+          case "min" => Min(innerExpr)()
+          case "max" => Max(innerExpr)()
+          case "collect" => Collect(innerExpr,(distinct != null))()
+          case unknown => throw NotImplementedException(unknown + "aggregator not implemented yet")
+        }
       case propertyPattern(varName, propertyName) =>
         val matchingKeys = validColumns.keySet.filter(_.matches(value + ":.++"))
         if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + value)
