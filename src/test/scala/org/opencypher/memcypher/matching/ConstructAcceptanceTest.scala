@@ -240,7 +240,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph(
         s"""|CREATE (a:Person),(b:Product),(a)-[:buys{amount:10, year:2010}]->(b),
             |(a)-[:buys{amount:10, year:2011}]->(b), (a)-[:buys{amount:10, year:2010}]->(b)""".stripMargin)
-      val result = graph.cypher("MATCH (a)-[e]->(b) CONSTRUCT NEW (m{groupby:1})-[y:PurchaseYear{groupby:['e.year']}]->(n{groupby:1}) RETURN GRAPH")
+      val result = graph.cypher("MATCH (a)-[e]->(b) CONSTRUCT NEW (m{groupby:'a'})-[y:PurchaseYear{groupby:['e.year']}]->(n{groupby:'b'}) RETURN GRAPH")
       print(result.getRecords)
       result.getRecords.collect should be(Array(CypherMap("m" -> MemNode(0, Set()), "n" -> MemNode(1, Set()), "y" -> MemRelationship(2, 0, 1, "PurchaseYear")),
         CypherMap("m" -> MemNode(0, Set()), "n" -> MemNode(1, Set()), "y" -> MemRelationship(3, 0, 1, "PurchaseYear")),

@@ -157,7 +157,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
           .project(Id(r.source)(), "source(" + r.v.name + ")")
           .project(Id(r.target)(), "target(" + r.v.name + ")")
           .project(StringLit(r.typ.getOrElse("null"))(), "type(" + r.v.name + ")")
-      case _ => //_:ConstructedNodeExtended throws compiler error "unreachable code"  //todo: project labels
+      case _ => //_:ConstructedNodeExtended throws compiler error "unreachable code"  //todo: project labels maybe via expr haslabel(baseEntity) if baseentity exists
         matchTable.data.project(idExpr, entity.v.name)
 
     }
@@ -258,7 +258,7 @@ object IdGenerator {
   }
 
   def init(): Unit = {
-    storedIDs.empty
+    storedIDs = Map[String, Long]()
     current_max_id.set(-1)
   } //needed, so that next query works on empty storedIDs Map
 }
