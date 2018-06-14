@@ -91,16 +91,16 @@ final case class TabularUnionAll(left: MemOperator, right: MemOperator) extends 
 sealed trait aggregationExtension {
   def groupBy: Set[Expr]
 
-  def aggregatedProperties: Option[Set[SetPropertyItem[Expr]]]
+  def aggregatedProperties: Set[SetPropertyItem[Expr]]
 }
 
 class ConstructedNodeExtended(v: Var, labels: Set[Label], baseEntity: Option[Var],
                               val groupBy: Set[Expr],
-                              val aggregatedProperties: Option[Set[SetPropertyItem[Expr]]]) extends ConstructedNode(v, labels, baseEntity) with aggregationExtension
+                              val aggregatedProperties: Set[SetPropertyItem[Expr]]) extends ConstructedNode(v, labels, baseEntity) with aggregationExtension
 
 class ConstructedRelationshipExtended(v: Var, baseEntity: Option[Var], source: Var, target: Var, typ: Option[String],
                                       val groupBy: Set[Expr],
-                                      val aggregatedProperties: Option[Set[SetPropertyItem[Expr]]]) extends ConstructedRelationship(v, source, target, typ, baseEntity) with aggregationExtension
+                                      val aggregatedProperties: Set[SetPropertyItem[Expr]]) extends ConstructedRelationship(v, source, target, typ, baseEntity) with aggregationExtension
 
 
 final case class ConstructGraph(left: MemOperator, right: MemOperator, construct: LogicalPatternGraph) extends BinaryOperator {
@@ -120,6 +120,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val matchTable = left.records
     val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
     var remaining_sets = sets //todo: delete used ones
+
     val constructHeader = newEntities.foldLeft(RecordHeader.empty) { (head, entity) =>
       head ++ (entity match {
         case _: ConstructedNode => RecordHeader.nodeFromSchema(entity.v, schema)
@@ -134,36 +135,12 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     extendedNodes.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context))
     extendedRelationships.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context)) //only relationship id generated for now
     val stored_ids = IdGenerator.storedIDs
-    //selected only important rows for example in demo
-    val important_columns = extendedMatchTable.columnType.keySet.diff(matchTable.columnType.keySet)
 
+    val important_columns = extendedMatchTable.columnType.keySet.diff(matchTable.columnType.keySet)
     val compact_result = extendedMatchTable.data.select(important_columns)(constructHeader, context)
 
-
     //val result = remaining_sets.foldLeft(compact_result){(table,item) => table.project(item.setValue,item.variable.name+"."+item.propertyKey+":STRING")(constructHeader,context)}
-    //todo: from MemRecords to MemGraph
     MemPhysicalResult(MemRecords(compact_result, constructHeader), MemCypherGraph.empty, name)
-  }
-
-  //todo: maybe project in groupby attribute the evaluated groupbyExpr? , uncomment code when aggregatedProperties are considered
-  def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
-    implicit val header: RecordHeader = matchTable.header
-    //todo: fix expr (check baseEntity)
-    val idExpr = Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())()
-    val newData = /*entity.aggregatedProperties match {
-      case None =>*/ entity match {
-      case r: ConstructedRelationshipExtended =>
-        matchTable.data.project(idExpr, entity.v.name)
-          .project(Id(r.source)(), "source(" + r.v.name + ")")
-          .project(Id(r.target)(), "target(" + r.v.name + ")")
-          .project(StringLit(r.typ.getOrElse("null"))(), "type(" + r.v.name + ")")
-      case _ => //_:ConstructedNodeExtended throws compiler error "unreachable code"  //todo: project labels maybe via expr haslabel(baseEntity) if baseentity exists
-        matchTable.data.project(idExpr, entity.v.name)
-
-    }
-    /*case Some(setAggProp) =>
-  }*/
-    MemRecords(newData, header)
   }
 
   //todo: if baseEntity --> id should get copied from baseentity --> put in idMap at the beginning of construct
@@ -186,7 +163,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     }
 
     //aggregatedPatter now twice checked
-    val potentialAggregations = sets.foldLeft(Set[SetPropertyItem[Expr]]()) { (z, item) =>
+    val aggregatedProperties = sets.foldLeft(Set[SetPropertyItem[Expr]]()) { (z, item) =>
       if (item.variable == newEntity.v)
         item.setValue match {
           case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => z + SetPropertyItem(item.propertyKey, item.variable, stringToExpr(s.v, matchTable.columnType))
@@ -194,18 +171,39 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
         }
       else z
     }
-    val optionAggregations = if (potentialAggregations.isEmpty) None
-    else Some(potentialAggregations) //better way?
 
     newEntity match {
-      case n: ConstructedNode => new ConstructedNodeExtended(n.v, n.labels, n.baseEntity, groupByVarSet, optionAggregations)
+      case n: ConstructedNode => new ConstructedNodeExtended(n.v, n.labels, n.baseEntity, groupByVarSet, aggregatedProperties)
       case r: ConstructedRelationship =>
         groupByVarSet ++= Set(Id(r.source)(), Id(r.target)()) // relationships implicit grouped by source and target node
-        new ConstructedRelationshipExtended(r.v, r.baseEntity, r.source, r.target, r.typ, groupByVarSet, optionAggregations)
+        new ConstructedRelationshipExtended(r.v, r.baseEntity, r.source, r.target, r.typ, groupByVarSet, aggregatedProperties)
     }
   }
 
-  //converts a string to a Expr ; todo: check if validColumnsMap is empty
+  //todo: maybe project in groupby attribute the evaluated groupbyExpr? , uncomment code when aggregatedProperties are considered
+  def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
+    implicit val header: RecordHeader = matchTable.header
+    val idExpr = Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())() //if id should be copied idExpr= Id(entity.baseEntity.v)
+    var newData = matchTable.data
+
+    if (entity.aggregatedProperties.isEmpty)
+      entity match {
+        case r: ConstructedRelationshipExtended =>
+          newData = matchTable.data.project(idExpr, entity.v.name)
+            .project(Id(r.source)(), "source(" + r.v.name + ")")
+            .project(Id(r.target)(), "target(" + r.v.name + ")")
+            .project(StringLit(r.typ.getOrElse("null"))(), "type(" + r.v.name + ")")
+        case n => //_:ConstructedNodeExtended throws compiler error "unreachable code"  //todo: project labels maybe via expr haslabel(baseEntity) if baseentity exists
+          n match {
+            case z: ConstructedNodeExtended => newData = matchTable.data.project(idExpr, entity.v.name)
+              z.labels.foreach(label => newData = newData.project(TrueLit(), entity.v.name + ":" + label.name))
+            case _ =>
+          }
+      }
+
+    MemRecords(newData, header)
+  }
+
   def stringToExpr(value: String, validColumns: Map[String, CypherType]): Expr = {
     val propertyPattern = "(.*)\\Q.\\E(.*)".r
     val typePattern = "type\\Q(\\E(.*)\\Q)\\E".r
@@ -243,22 +241,22 @@ object IdGenerator {
     var key = constructedEntityName
 
     if (groupBy.nonEmpty) {
-      key += groupBy.foldLeft("")((x, based_value) => x + "|" + based_value); //generate with groupby
-      if (storedIDs.contains(key)) storedIDs.getOrElse(key, -1)
-      else {
+      key += groupBy.foldLeft("")((x, based_value) => x + "|" + based_value); //generate with groupbyKey
+      if (storedIDs.contains(key)) storedIDs.getOrElse(key, -1) //return found Id
+      else {  //generate new ID
         storedIDs += key -> current_max_id.incrementAndGet()
         current_max_id.get()
       }
     }
     else {
       val newID = current_max_id.incrementAndGet()
-      storedIDs += key + newID -> newID //every time id fct for ungrouped var gets called --> new ID
+      storedIDs += key + newID -> newID //every time id fct for ungrouped var gets called --> new ID ;todo: for final version remove this line?
       newID
     }
   }
 
-  def init(): Unit = {
+  def init(startID: Integer = 0): Unit = {
     storedIDs = Map[String, Long]()
-    current_max_id.set(-1)
+    current_max_id.set(startID - 1)
   } //needed, so that next query works on empty storedIDs Map
 }
