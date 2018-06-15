@@ -21,7 +21,7 @@ import org.opencypher.okapi.api.value.CypherValue.CypherMap
 import org.opencypher.okapi.ir.api.Label
 
 class ConstructAcceptanceTest extends MemCypherTestSuite {
-  //todo: overwrite properties test, clone test?
+
   describe("node-constructs") {
 
     it("without unnamed construct-variable") {
@@ -136,16 +136,17 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
 
     it("with cloning") {
       val graph = initGraph("CREATE (:Car),(:Person{age:10,hobbies:['chess','reading']})")
-      val result = graph.cypher("Match (p:Person) CONSTRUCT Clone p RETURN GRAPH")
-
-      result.getRecords.collect should be(Array(CypherMap("p" -> MemNode(1, Set("Person"),CypherMap("age"->10,"hobbies"->List("chess","reading"))))))
+      val result = graph.cypher("Match (p:Person) CONSTRUCT Clone p NEW(x{groupby:1}) RETURN GRAPH")
+      //check that id gets copied and new ids arent colliding with copied ones
+      result.getRecords.collect should be(Array(CypherMap("p" -> MemNode(1, Set("Person"), CypherMap("age" -> 10, "hobbies" -> List("chess", "reading"))),
+        "x" -> MemNode(2))))
     }
 
     it("with overwriting copied properties") {
       val graph = initGraph("CREATE (:Car),(:Person{age:10,hobbies:['chess','reading']})")
       val result = graph.cypher("Match (p:Person) CONSTRUCT NEW(p2 COPY OF p{age:11, hobbies:'none'}) RETURN GRAPH")
 
-      result.getRecords.collect should be(Array(CypherMap("p2" -> MemNode(1, Set("Person"),CypherMap("age"->11,"hobbies"->"none")))))
+      result.getRecords.collect should be(Array(CypherMap("p2" -> MemNode(1, Set("Person"), CypherMap("age" -> 11, "hobbies" -> "none")))))
     }
 
     it("with aggregated properties") {
@@ -218,7 +219,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val result = graph.cypher("MATCH (m)-[e]->(n) CONSTRUCT NEW(Copy of m) NEW(Copy of n) NEW (n)-[e]->(m) RETURN GRAPH")
 
       result.getRecords.collect should contain(CypherMap("m" -> MemNode(0, Set("Person")), "n" -> MemNode(1, Set("Car")),
-        "e" -> MemRelationship(2, 0, 1, "likes",CypherMap("since" -> 2018))))
+        "e" -> MemRelationship(2, 0, 1, "likes", CypherMap("since" -> 2018))))
       result.getRecords.collect should contain(CypherMap("m" -> MemNode(1, Set("Car")), "n" -> MemNode(0, Set("Person")),
         "e" -> MemRelationship(3, 1, 0, "boughtby", CypherMap("in" -> 2017))))
       result.getRecords.collect should contain(CypherMap("m" -> MemNode(0, Set("Person")), "n" -> MemNode(1, Set("Car")),
@@ -226,6 +227,14 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       /*result.getGraph.relationships("e").collect should be(Array(CypherMap("edge" -> MemRelationship(3, 1, 2, "likes", CypherMap("since" -> 2018))),
         CypherMap("e" -> MemRelationship(4, 2, 1, "likes", CypherMap("in" -> 2017))),
         CypherMap("e" -> MemRelationship(5, 1, 2, "likes", CypherMap("for" -> 1)))))*/
+    }
+
+    it("with implicit cloning edge") {
+      val graph = initGraph("CREATE (a:Person)-[:likes{since:2018}]->(b:Car)")
+      val result = graph.cypher("MATCH (n)-[e:likes]->(m) CONSTRUCT NEW (n)-[e]->(m) NEW (x{groupby:1}) RETURN GRAPH")
+      //check that ids are copied and new ids don't collide
+      result.getRecords.collect should be(CypherMap("n" -> MemNode(0, Set("Person")), "m" -> MemNode(0, Set("Car")),
+        "e" -> MemRelationship(2, 0, 1, "likes", CypherMap("since" -> 2018)), "x" -> MemNode(3)))
     }
 
     it("with bound construct variable with overwriting copied properties & type") {
