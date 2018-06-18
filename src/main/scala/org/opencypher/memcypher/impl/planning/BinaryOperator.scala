@@ -119,6 +119,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     IdGenerator.init() //todo: when clonedVarsToInputVars is not empty --> start after highest Id got via matchTable
     val matchTable = left.records
     val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
+    if(matchTable.size == 0) return MemPhysicalResult(MemRecords(Embeddings.empty,RecordHeader.empty), MemCypherGraph.empty, name) //empty result on empty matchTable
     //clone_entites first !
     var groupby_sets = List[SetPropertyItem[Expr]]()
     var aggregated_sets = List[SetPropertyItem[Expr]]()

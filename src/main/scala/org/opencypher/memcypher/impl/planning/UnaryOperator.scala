@@ -13,7 +13,7 @@
  */
 package org.opencypher.memcypher.impl.planning
 
-import org.opencypher.memcypher.api.MemRecords
+import org.opencypher.memcypher.api.{Embeddings, MemRecords}
 import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
@@ -196,7 +196,7 @@ case class RemoveAliases(
   }
 }
 //returns MemRecords to (for testing purposes)
-final case class ReturnGraph(in:MemOperator) extends UnaryOperator {
+case class ReturnGraph(in:MemOperator) extends UnaryOperator {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
     MemPhysicalResult(prev.records,prev.workingGraph,prev.workingGraphName)
@@ -205,7 +205,12 @@ final case class ReturnGraph(in:MemOperator) extends UnaryOperator {
   override def header: RecordHeader = RecordHeader.empty
 }
 
-final case class FromGraph(in:MemOperator,graph:LogicalCatalogGraph) extends UnaryOperator with InheritedHeader {
+case class FromGraph(in:MemOperator,graph:LogicalCatalogGraph) extends UnaryOperator with InheritedHeader {
 
   override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = MemPhysicalResult(prev.records, resolve(graph.qualifiedGraphName), graph.qualifiedGraphName)
+}
+
+case class EmptyRecords(in:MemOperator,header: RecordHeader) extends UnaryOperator {
+
+  override def executeUnary(prev: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = MemPhysicalResult(MemRecords(Embeddings.empty,header), prev.workingGraph, prev.workingGraphName)
 }

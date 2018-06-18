@@ -126,8 +126,10 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
     onGraph: MemOperator,
     construct: LogicalPatternGraph): MemOperator = ConstructGraph(table,onGraph,construct)
 
+  override def planEmptyRecords(
+                                 in: MemOperator,
+                                 header: RecordHeader): MemOperator = EmptyRecords(in,header)
 
-  override def planEmptyRecords(in: MemOperator, header: RecordHeader): MemOperator = ???
 
   override def planInitVarExpand(in: MemOperator, source: Var, edgeList: Var, target: Var, header: RecordHeader): MemOperator = ???
 
