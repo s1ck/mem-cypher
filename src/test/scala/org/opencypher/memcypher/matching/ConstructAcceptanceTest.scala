@@ -109,7 +109,6 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
     }
 
     it("with setting properties") {
-      //Construct ({color:"blue",price:1000})
       val graph = initGraph("CREATE (:Person),(:Car)")
       val result = graph.cypher("""CONSTRUCT NEW (x{color:"blue",price:1000}) RETURN GRAPH""")
       val records = result.getRecords
@@ -175,8 +174,8 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val result = graph.cypher("MATCH (n:Car),(m:Person) CONSTRUCT NEW (x{groupby:['n']}) NEW (y{groupby:['m']}) RETURN GRAPH")
       val records = result.getRecords
 
-      records.collect should be(Array(CypherMap("x" -> MemNode(0, Set(), CypherMap()), "y" -> MemNode(2, Set(), CypherMap())),
-        CypherMap("x" -> MemNode(1, Set(), CypherMap()), "y" -> MemNode(2, Set(), CypherMap()))))
+      records.collect should be(Array(CypherMap("x" -> MemNode(0), "y" -> MemNode(2)),
+        CypherMap("x" -> MemNode(1), "y" -> MemNode(2))))
 
       /*result.getGraph.nodes("n").collect.distinct.length should be(3)*/
     }
@@ -188,8 +187,8 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("CREATE (:filler)")
       val result = graph.cypher("CONSTRUCT NEW (a) NEW (b) NEW (a)-[:edge]->(b) RETURN GRAPH")
 
-      result.getRecords.collect should be(Array(CypherMap("a" -> MemNode(0, Set()),
-        "b" -> MemNode(1, Set()),
+      result.getRecords.collect should be(Array(CypherMap("a" -> MemNode(0),
+        "b" -> MemNode(1),
         "  FRESH_VAR33" -> MemRelationship(2, 0, 1, "edge"))))
       /*result.getGraph.nodes("n").collect.length should be(2)
       result.getGraph.relationships("n").collect.length should be(1)
@@ -255,9 +254,9 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
             |(a)-[:buys{amount:10, year:2011}]->(b), (a)-[:buys{amount:10, year:2010}]->(b)""".stripMargin)
       val result = graph.cypher("MATCH (a)-[e]->(b) CONSTRUCT NEW (m{groupby:'a'})-[y:PurchaseYear{groupby:['e.year']}]->(n{groupby:'b'}) RETURN GRAPH")
       print(result.getRecords)
-      result.getRecords.collect should be(Array(CypherMap("m" -> MemNode(0, Set()), "n" -> MemNode(1, Set()), "y" -> MemRelationship(2, 0, 1, "PurchaseYear")),
-        CypherMap("m" -> MemNode(0, Set()), "n" -> MemNode(1, Set()), "y" -> MemRelationship(3, 0, 1, "PurchaseYear")),
-        CypherMap("m" -> MemNode(0, Set()), "n" -> MemNode(1, Set()), "y" -> MemRelationship(2, 0, 1, "PurchaseYear"))))
+      result.getRecords.collect should be(Array(CypherMap("m" -> MemNode(0), "n" -> MemNode(1), "y" -> MemRelationship(2, 0, 1, "PurchaseYear")),
+        CypherMap("m" -> MemNode(0), "n" -> MemNode(1), "y" -> MemRelationship(3, 0, 1, "PurchaseYear")),
+        CypherMap("m" -> MemNode(0), "n" -> MemNode(1), "y" -> MemRelationship(2, 0, 1, "PurchaseYear"))))
 
       // 2 new nodes, 2 new edges
       /*result.getGraph.nodes("n").collect.length should be(2)
@@ -271,8 +270,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("Create (:filler)")
       val result = graph.cypher("""CONSTRUCT NEW (n),(m),(n)-[e:edge{color:"blue",year:2018}]->(m) RETURN GRAPH""")
 
-      result.getRecords.collect should contain(CypherMap("m" -> MemNode(0, Set()), "n" -> MemNode(1, Set()),
-        "e" -> MemRelationship(2, 0, 1, "edge", CypherMap("color" -> "blue", "year" -> 2018))))
+      result.getRecords.collect should be(Array(CypherMap("n" -> MemNode(0), "m" -> MemNode(1), "e" -> MemRelationship(2, 0, 1, "edge", CypherMap("color" -> "blue", "year" -> 2018)))))
       /*result.getGraph.relationships("e").collect should contain(CypherMap("e" -> MemRelationship(3, 1, 2, "edge", CypherMap("color" -> "blue", "year" -> 2018))))*/
     }
 
@@ -282,9 +280,9 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
             |(a)-[:buys{amount:10, year:2011}]->(b), (a)-[:buys{amount:10, year:2010}]->(b)""".stripMargin)
       val result = graph.cypher("""MATCH (m)-[e]->(n) CONSTRUCT NEW (m)-[:PurchaseYear{groupby:['e.year'], amount:"sum(e.amount)"}]->(n) RETURN GRAPH""")
 
-      result.getRecords.collect should contain(CypherMap("m" -> MemNode(0, Set()), "n" -> MemNode(0, Set()),
+      result.getRecords.collect should contain(CypherMap("m" -> MemNode(0), "n" -> MemNode(0),
         "e" -> MemRelationship(2, 0, 1, "PurchaseYear", CypherMap("amount" -> 20))))
-      result.getRecords.collect should contain(CypherMap("m" -> MemNode(1, Set()), "n" -> MemNode(0, Set()),
+      result.getRecords.collect should contain(CypherMap("m" -> MemNode(1), "n" -> MemNode(0),
         "e" -> MemRelationship(3, 0, 1, "PurchaseYear", CypherMap("amount" -> 10))))
       /* result.getGraph.relationships("e").collect should be(Array(CypherMap("e" -> MemRelationship(3, 1, 2, "PurchaseYear", CypherMap("amount" -> 20))),
          CypherMap("e" -> MemRelationship(4, 1, 2, "PurchaseYear", CypherMap("amount" -> 10)))))*/
@@ -294,7 +292,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("Create (:filler)")
       val result = graph.cypher("CONSTRUCT NEW (n),(m), (n)-[x:edge]->(m) , (m)-[y:edge]->(n) RETURN GRAPH")
 
-      result.getRecords.collect should be(Array(CypherMap("n" -> MemNode(0, Set()), "m" -> MemNode(1, Set()), "x" -> MemRelationship(2, 0, 1, "edge"), "y" -> MemRelationship(3, 1, 0, "edge"))))
+      result.getRecords.collect should be(Array(CypherMap("n" -> MemNode(0), "m" -> MemNode(1), "x" -> MemRelationship(2, 0, 1, "edge"), "y" -> MemRelationship(3, 1, 0, "edge"))))
 
       /*result.getGraph.nodes("n").collect.distinct.length should be(2)
       result.getGraph.relationships("n").collect.distinct.length should be(2)*/
