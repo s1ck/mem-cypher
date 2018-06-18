@@ -27,6 +27,7 @@ import org.opencypher.okapi.ir.api.block.{Asc, Desc, SortItem}
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.relational.impl.table.RecordHeader
 import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
+import org.opencypher.okapi.api.value.CypherValue
 
 object MemRecords extends CypherRecordsCompanion[MemRecords, MemCypherSession] {
 
@@ -142,7 +143,7 @@ case class Embeddings(data: Seq[CypherMap]) {
                   .map(_.evaluate(inner))
                   .filterNot(_.isNull)
                 val toCollect = if (distinct) coll.distinct else coll
-                current.updated(to, CypherList(toCollect))
+                current.updated(to, CypherValue.apply(toCollect)) //CypherList(toCollect) would return List(List(...))
 
               case other => throw NotImplementedException(s"Aggregation $other not yet supported")
             }
