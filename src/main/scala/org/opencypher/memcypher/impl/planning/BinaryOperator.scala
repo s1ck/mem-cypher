@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.api.{Embeddings, MemCypherGraph, MemCypherSession, MemRecords}
+import org.opencypher.memcypher.impl.table.RecordHeaderUtils
 import org.opencypher.memcypher.impl.value.CypherMapOps._
 import org.opencypher.memcypher.impl.{MemPhysicalResult, MemRuntimeContext}
 import org.opencypher.okapi.api.schema.Schema
@@ -91,16 +92,16 @@ final case class TabularUnionAll(left: MemOperator, right: MemOperator) extends 
 sealed trait aggregationExtension {
   def groupBy: Set[Expr]
 
-  def aggregatedProperties: List[SetPropertyItem[Expr]]
+  def aggregatedProperties: List[SetPropertyItem[Aggregator]]
 }
 
 class ConstructedNodeExtended(v: Var, labels: Set[Label], baseEntity: Option[Var],
                               val groupBy: Set[Expr],
-                              val aggregatedProperties: List[SetPropertyItem[Expr]]) extends ConstructedNode(v, labels, baseEntity) with aggregationExtension
+                              val aggregatedProperties: List[SetPropertyItem[Aggregator]]) extends ConstructedNode(v, labels, baseEntity) with aggregationExtension
 
 class ConstructedRelationshipExtended(v: Var, baseEntity: Option[Var], source: Var, target: Var, typ: Option[String],
                                       val groupBy: Set[Expr],
-                                      val aggregatedProperties: List[SetPropertyItem[Expr]]) extends ConstructedRelationship(v, source, target, typ, baseEntity) with aggregationExtension
+                                      val aggregatedProperties: List[SetPropertyItem[Aggregator]]) extends ConstructedRelationship(v, source, target, typ, baseEntity) with aggregationExtension
 
 
 final case class ConstructGraph(left: MemOperator, right: MemOperator, construct: LogicalPatternGraph) extends BinaryOperator {
@@ -122,14 +123,14 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     if(matchTable.size == 0) return MemPhysicalResult(MemRecords(Embeddings.empty,RecordHeader.empty), MemCypherGraph.empty, name) //empty result on empty matchTable
     //clone_entites first !
     var groupby_sets = List[SetPropertyItem[Expr]]()
-    var aggregated_sets = List[SetPropertyItem[Expr]]()
+    var aggregated_sets = List[SetPropertyItem[Aggregator]]()
     var remaining_sets = List[SetPropertyItem[Expr]]()
 
       sets.foreach {
         case item if item.propertyKey == "groupby" => groupby_sets ::= item
         case item@other => {
           other.setValue match {
-            case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => aggregated_sets ::= SetPropertyItem(item.propertyKey, item.variable, stringToExpr(s.v, matchTable.columnType))
+            case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => aggregated_sets ::= SetPropertyItem(item.propertyKey, item.variable, stringtoAggrExpr(s.v, matchTable.columnType))
             case _ => remaining_sets ::= other
           }
         }
@@ -153,13 +154,13 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val important_columns = extendedMatchTable.columnType.keySet.diff(matchTable.columnType.keySet)
     val compact_result = extendedMatchTable.data.select(important_columns)(constructHeader, context)
 
-    val result = remaining_sets.foldLeft(compact_result){(table,item) => table.project(item.setValue,item.variable.name+"."+item.propertyKey+":"+item.setValue.cypherType.material.name)(constructHeader,context)} //not via recordheader --> columnName fct not usable
+    val result = remaining_sets.foldLeft(compact_result){(table,item) => table.project(item.setValue,item.variable.name+"."+item.propertyKey+":"+item.setValue.cypherType.material.name)(constructHeader,context)}
 
     MemPhysicalResult(MemRecords(result, constructHeader), MemCypherGraph.empty, name)
   }
 
   //todo: if baseEntity --> id should get copied from baseentity --> put in idMap at the beginning of construct
-  def createExtendedEntity(newEntity: ConstructedEntity, groupby: List[SetPropertyItem[Expr]], aggregatedProperties:List[SetPropertyItem[Expr]], matchTable:MemRecords): ConstructedEntity with aggregationExtension = {
+  def createExtendedEntity(newEntity: ConstructedEntity, groupby: List[SetPropertyItem[Expr]], aggregatedProperties:List[SetPropertyItem[Aggregator]], matchTable:MemRecords): ConstructedEntity with aggregationExtension = {
     //todo: move to another position?
     var groupByVarSet = newEntity.baseEntity match {
       case Some(v) => Set[Expr](Id(v)())
@@ -189,9 +190,13 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     implicit val header: RecordHeader = matchTable.header
     val idExpr = Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())() //if id should be copied idExpr= Id(entity.baseEntity.v)
 
-    var newData = matchTable.data.project(idExpr, entity.v.name)
+    var newData = matchTable.data
 
-    //todo: if (entity.aggregatedProperties.isEmpty)
+      if (entity.aggregatedProperties.nonEmpty) {
+        val aggregations = entity.aggregatedProperties.foldLeft(List[(Var,Aggregator)]())((list,setItem) => list :+ (Var(setItem.variable.name+"."+setItem.propertyKey+":STRING")()->setItem.setValue)) //todo: use of Var() feels wrong .. get columnName via Header?
+        newData = newData.group(entity.groupBy,aggregations.toSet) // 2 times ? .project(idExpr, entity.v.name)
+          .innerJoin(matchTable.data,ListLit(entity.groupBy.toIndexedSeq)(),ListLit(entity.groupBy.toIndexedSeq)()) //todo: join doesnt work with group by after id(..)? whats with type(...) (after group by columnname is f.i. id(a) instead of a)
+      }
       entity match {
         case r: ConstructedRelationshipExtended =>
           newData = newData
@@ -205,16 +210,16 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
             case _ =>
           }
       }
+    newData = newData.project(idExpr, entity.v.name)
+       //remove redundancy
 
     MemRecords(newData, header)
   }
 
-  def stringToExpr(value: String, validColumns: Map[String, CypherType]): Expr = {
-    val propertyPattern = "(.*)\\Q.\\E(.*)".r
-    val typePattern = "type\\Q(\\E(.*)\\Q)\\E".r
+  //todo: throw error or maybe decide here if aggregator property wanted ... else put setItem into remaining_set
+  def stringtoAggrExpr(value: String,validColumns: Map[String, CypherType]): Aggregator = {
     val aggregationPattern = "(count|sum|min|max|collect)\\Q(\\E(distinct )?(.*)\\Q)\\E".r //move in extra function or change error messages
-    //todo: find bug in regExp (found?!)
-    value match {
+    value match{
       case aggregationPattern(aggr, distinct, inner) =>
         val innerExpr = stringToExpr(inner, validColumns)
         aggr match {
@@ -225,6 +230,15 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
           case "collect" => Collect(innerExpr, distinct != null)()
           case unknown => throw NotImplementedException(unknown + "aggregator not implemented yet")
         }
+      case _ => throw IllegalArgumentException("no correct aggregator") //catch in outer method?
+    }
+  }
+  def stringToExpr(value: String, validColumns: Map[String, CypherType]): Expr = {
+    val propertyPattern = "(.*)\\Q.\\E(.*)".r
+    val typePattern = "type\\Q(\\E(.*)\\Q)\\E".r
+
+    //todo: find bug in regExp (found?!)
+    value match {
       case propertyPattern(varName, propertyName) =>
         val matchingKeys = validColumns.keySet.filter(_.matches(value + ":.++"))
         if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + value)

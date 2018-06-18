@@ -151,9 +151,9 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
     it("with aggregated properties") {
       //max(n.age) must be a string (otherwise syntaxexception from cypher)
       val graph = initGraph("CREATE ({age:10}),({age:12}),({age:14})")
-      val result = graph.cypher("""MATCH (n) CONSTRUCT NEW(x{max_age:"max(n.age)"}) RETURN GRAPH""")
+      val result = graph.cypher("""MATCH (n) CONSTRUCT NEW(x{groupby:1,max_age:"max(n.age)"}) RETURN GRAPH""")
 
-      result.getRecords.collect should be(Array(CypherMap("x" -> MemNode(0, Set.empty, CypherMap("max_age" -> 14)))))
+      result.getRecords.collect should contain (CypherMap("x" -> MemNode(0, Set.empty, CypherMap("max_age" -> 14)))) //3x the same MemNode returned here (no distinct over cyphermaps)
       /*result.getGraph.nodes("n").collect should contain(CypherMap("n" -> MemNode(1, Set.empty, CypherMap("max_age" -> 14))))*/
     }
 
@@ -162,8 +162,8 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val result = graph.cypher("""MATCH (n) CONSTRUCT NEW(x{prices:"collect(distinct n.price)",groupby:['n.model']}) RETURN GRAPH""")
       val records = result.getRecords
 
-      records.collect should contain(CypherMap("x" -> MemNode(1, Set.empty, CypherMap("prices" -> List(10, 30)))))
-      records.collect should contain(CypherMap("x" -> MemNode(0, Set.empty, CypherMap("prices" -> List(10, 20)))))
+      records.collect should contain(CypherMap("x" -> MemNode(0, Set.empty, CypherMap("prices" -> List(10, 30)))))
+      records.collect should contain(CypherMap("x" -> MemNode(1, Set.empty, CypherMap("prices" -> List(20, 10)))))
       /*result.getGraph.nodes("n").collect.length should be(2)
       result.getGraph.nodes("n").collect should contain(CypherMap("nodes" -> MemNode(2, Set.empty, CypherMap("prices" -> List(10, 30)))))*/
     }
@@ -278,11 +278,11 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph(
         s"""|CREATE (a:Person),(b:Product),(a)-[:buys{amount:10, year:2010}]->(b),
             |(a)-[:buys{amount:10, year:2011}]->(b), (a)-[:buys{amount:10, year:2010}]->(b)""".stripMargin)
-      val result = graph.cypher("""MATCH (m)-[e]->(n) CONSTRUCT NEW (m)-[:PurchaseYear{groupby:['e.year'], amount:"sum(e.amount)"}]->(n) RETURN GRAPH""")
+      val result = graph.cypher("""MATCH (m)-[e]->(n) CONSTRUCT NEW (a{groupby:"m"})-[:PurchaseYear{groupby:['e.year'], amount:"sum(e.amount)"}]->(b{groupby:"n"}) RETURN GRAPH""")
 
-      result.getRecords.collect should contain(CypherMap("m" -> MemNode(0), "n" -> MemNode(0),
+      result.getRecords.collect should contain(CypherMap("a" -> MemNode(0), "b" -> MemNode(0),
         "e" -> MemRelationship(2, 0, 1, "PurchaseYear", CypherMap("amount" -> 20))))
-      result.getRecords.collect should contain(CypherMap("m" -> MemNode(1), "n" -> MemNode(0),
+      result.getRecords.collect should contain(CypherMap("a" -> MemNode(1), "b" -> MemNode(0),
         "e" -> MemRelationship(3, 0, 1, "PurchaseYear", CypherMap("amount" -> 10))))
       /* result.getGraph.relationships("e").collect should be(Array(CypherMap("e" -> MemRelationship(3, 1, 2, "PurchaseYear", CypherMap("amount" -> 20))),
          CypherMap("e" -> MemRelationship(4, 1, 2, "PurchaseYear", CypherMap("amount" -> 10)))))*/
