@@ -50,9 +50,8 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val records = result.getRecords
 
       records.size shouldBe (2)
-      records.collect should be(Array(CypherMap("m" -> MemNode(0, Set("Car"), CypherMap("color" -> "blue")),"m" -> MemNode(1, Set("Person"), CypherMap("age" -> 10)))))
+      records.collect should be(Array(CypherMap("m" -> MemNode(0, Set("Car"), CypherMap("color" -> "blue"))),CypherMap("m" -> MemNode(1, Set("Person"), CypherMap("age" -> 10)))))
 
-      //result should contain same nodes as "graph"(except id?!)
       /*result.getGraph.nodes("n").collect.toSet should be(graph.nodes.toSet)*/
     }
 
@@ -214,35 +213,28 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
     }
 
     it("with bound edge-construct variable with copying properties") {
-      val graph = initGraph("CREATE (a:Person)-[:likes{since:2018}]->(b:Car)-[:boughtby{in:2017}]->(a), (a)-[:owns{for:1}]->(b)")
-      val result = graph.cypher("MATCH (m)-[e]->(n) CONSTRUCT NEW(a Copy of m) NEW(b Copy of n) NEW (a)-[e]->(b) RETURN GRAPH")
+      val graph = initGraph("CREATE (a:Person)-[:likes{since:2018}]->(b:Car), (a)-[:buys{in:2017}]->(b), (a)-[:owns{for:1}]->(b)")
+      val result = graph.cypher("MATCH (m)-[e]->(n) CONSTRUCT NEW(a Copy of m) NEW(b Copy of n) NEW (a)-[y Copy of e]->(b) RETURN GRAPH")
 
-      result.getRecords.collect should contain(CypherMap("a" -> MemNode(0, Set("Person")), "b" -> MemNode(1, Set("Car")),
-        "e" -> MemRelationship(2, 0, 1, "likes", CypherMap("since" -> 2018))))
-      result.getRecords.collect should contain(CypherMap("a" -> MemNode(1, Set("Car")), "b" -> MemNode(0, Set("Person")),
-        "e" -> MemRelationship(3, 1, 0, "boughtby", CypherMap("in" -> 2017))))
-      result.getRecords.collect should contain(CypherMap("a" -> MemNode(0, Set("Person")), "b" -> MemNode(1, Set("Car")),
-        "e" -> MemRelationship(2, 0, 1, "owns", CypherMap("for" -> 1))))
-      /*result.getGraph.relationships("e").collect should be(Array(CypherMap("edge" -> MemRelationship(3, 1, 2, "likes", CypherMap("since" -> 2018))),
-        CypherMap("e" -> MemRelationship(4, 2, 1, "likes", CypherMap("in" -> 2017))),
-        CypherMap("e" -> MemRelationship(5, 1, 2, "likes", CypherMap("for" -> 1)))))*/
+      result.getRecords.collect should be (Array(CypherMap("a" -> MemNode(0, Set("Person")), "b" -> MemNode(1, Set("Car")),"y" -> MemRelationship(2, 0, 1, "owns", CypherMap("for" -> 1))),
+        CypherMap("a" -> MemNode(0, Set("Person")), "b" -> MemNode(1, Set("Car")),"y" -> MemRelationship(3, 0, 1, "buys", CypherMap("in" -> 2017))),
+        CypherMap("a" -> MemNode(0, Set("Person")), "b" -> MemNode(1, Set("Car")),"y" -> MemRelationship(4, 0, 1, "likes", CypherMap("since" -> 2018)))))
     }
 
     it("with implicit cloning edge") {
       val graph = initGraph("CREATE (a:Person)-[:likes{since:2018}]->(b:Car)")
       val result = graph.cypher("MATCH (n)-[e:likes]->(m) CONSTRUCT NEW (n)-[e]->(m) NEW (x{groupby:1}) RETURN GRAPH")
       //check that ids are copied and new ids don't collide
-      result.getRecords.collect should be(CypherMap("n" -> MemNode(0, Set("Person")), "m" -> MemNode(0, Set("Car")),
-        "e" -> MemRelationship(2, 0, 1, "likes", CypherMap("since" -> 2018)), "x" -> MemNode(3)))
+      result.getRecords.collect should be (Array(CypherMap("n" -> MemNode(0, Set("Person")), "m" -> MemNode(1, Set("Car")),
+        "e" -> MemRelationship(2, 0, 1, "likes", CypherMap("since" -> 2018)), "x" -> MemNode(3))))
     }
 
     it("with bound construct variable with overwriting copied properties & type") {
-      // construct (n),(m), (n)-[e:edge]->(m)
       val graph = initGraph("CREATE (a:Person)-[:likes{since:2018}]->(b:Car)-[:boughtby{in:2017}]->(a), (a)-[:owns{for:1}]->(b)")
-      val result = graph.cypher("MATCH (n)-[e:likes]->(m) CONSTRUCT NEW(Copy of n) NEW(Copy of m) NEW (n)-[y Copy of e:sold{since:2022}]->(m) RETURN GRAPH")
+      val result = graph.cypher("MATCH (n)-[e:likes]->(m) CONSTRUCT Clone n,m NEW (n)-[y Copy of e:sold{since:2022}]->(m) RETURN GRAPH")
 
-      result.getRecords.collect should be(CypherMap("n" -> MemNode(0, Set("Person")), "m" -> MemNode(0, Set("Car")),
-        "y" -> MemRelationship(2, 0, 1, "sold", CypherMap("since" -> 2022))))
+      result.getRecords.collect should be (Array(CypherMap("n" -> MemNode(0, Set("Person")), "m" -> MemNode(1, Set("Car")),
+        "y" -> MemRelationship(2, 0, 1, "sold", CypherMap("since" -> 2022)))))
       /*result.getGraph.nodes("n").collect.length should be(2)
       result.getGraph.relationships("n").collect.length should be(3)*/
     }

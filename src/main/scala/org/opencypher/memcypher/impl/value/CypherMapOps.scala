@@ -47,17 +47,17 @@ object CypherMapOps {
 
         //also used to generate new IDs for construct here!
         case Id(v) =>
-          v match{
-            case v:Var => {
+          v match {
+            case v: Var => {
               logger.info(s"Id lookup: `$v` in $map")
               evaluate(v)
             }
-            case l:ListLit => {
+            case l: ListLit => {
               logger.info(s"Id generation: `$l` in $map")
               val list = evaluate(l).cast[CypherList].value //can be only cypherList as ListLit gets evaluated to Cypherlist
-              IdGenerator.generateID(list.head.toString(),list.tail.map(_.toString())) //maybe make generateID arguments just one list?
+              IdGenerator.generateID(list.head.toString(), list.tail.map(_.toString())) //maybe make generateID arguments just one list?
             }
-            case x => throw new IllegalArgumentException("unexpected type for id-expr evaluation "+x.getClass)
+            case x => throw new IllegalArgumentException("unexpected type for id-expr evaluation " + x.getClass)
           }
 
         case HasType(rel, relType) =>
@@ -154,7 +154,12 @@ object CypherMapOps {
         case id: CypherInteger =>
           val labels = header
             .labelSlots(field)
-            .mapValues { s => row(s.columnName).cast[Boolean] }
+            .mapValues { s =>
+              row(s.columnName) match {
+                case CypherNull => false
+                case value => value.cast[Boolean]
+              }
+            } //check for CypherNull as cast[Boolean] could throw NullPointerException otherwise
             .collect { case (h, b) if b => h.label.name }
             .toSet
 
