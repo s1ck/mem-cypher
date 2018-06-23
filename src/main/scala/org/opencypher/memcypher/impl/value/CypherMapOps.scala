@@ -16,7 +16,7 @@ package org.opencypher.memcypher.impl.value
 import com.typesafe.scalalogging.Logger
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.impl.MemRuntimeContext
-import org.opencypher.memcypher.impl.planning.{IdGenerator}
+import org.opencypher.memcypher.impl.planning.IdGenerator.generateID
 import org.opencypher.memcypher.impl.table.RecordHeaderUtils._
 import org.opencypher.memcypher.impl.value.CypherValueOps._
 import org.opencypher.okapi.api.types.{CTNode, CTRelationship}
@@ -55,7 +55,7 @@ object CypherMapOps {
             case l: ListLit => {
               logger.info(s"Id generation: `$l` in $map")
               val list = evaluate(l).cast[CypherList].value //can be only cypherList as ListLit gets evaluated to Cypherlist
-              IdGenerator.generateID(list.head.toString(), list.tail.map(_.toString())) //maybe make generateID arguments just one list?
+              generateID(list.head.toString(), list.tail.map(_.toString())) //maybe make generateID arguments just one list?
             }
             case x => throw new IllegalArgumentException("unexpected type for id-expr evaluation " + x.getClass)
           }

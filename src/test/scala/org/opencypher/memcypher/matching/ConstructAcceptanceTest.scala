@@ -14,16 +14,13 @@
 package org.opencypher.memcypher.matching
 
 import org.opencypher.memcypher.MemCypherTestSuite
-import org.opencypher.memcypher.api.{Embeddings, MemCypherSession, MemRecords}
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
-import org.opencypher.okapi.api.value.CypherValue
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
-import org.opencypher.okapi.ir.api.Label
 
 class ConstructAcceptanceTest extends MemCypherTestSuite {
 
   describe("node-constructs") {
-
+    //todo: test aggregated over properties with cypher type like StringOrNull
     it("without unnamed construct-variable") {
       val graph = initGraph("CREATE (:Person), (:Car)")
       val result = graph.cypher("CONSTRUCT NEW() RETURN GRAPH")
@@ -38,7 +35,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val graph = initGraph("CREATE (:PERSON),(:CAR)")
       val result = graph.cypher("Match (i) CONSTRUCT NEW(n) RETURN GRAPH")
       val records = result.getRecords
-      records.size shouldBe (2)
+      records.size shouldBe 2
       records.collect should be(Array(CypherMap("n" -> MemNode(0)), CypherMap("n" -> MemNode(1))))
       /*result.getGraph.nodes("n").collect.length should be(2)
       result.getGraph.nodes("n").collect should be(Array(CypherMap("n" -> MemNode(1, Set(""), CypherMap.empty)), CypherMap("n" -> MemNode(2, Set(""), CypherMap.empty))))*/
@@ -49,7 +46,7 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val result = graph.cypher("MATCH (n) CONSTRUCT NEW(m COPY OF n) RETURN GRAPH")
       val records = result.getRecords
 
-      records.size shouldBe (2)
+      records.size shouldBe 2
       records.collect should be(Array(CypherMap("m" -> MemNode(0, Set("Car"), CypherMap("color" -> "blue"))),CypherMap("m" -> MemNode(1, Set("Person"), CypherMap("age" -> 10)))))
 
       /*result.getGraph.nodes("n").collect.toSet should be(graph.nodes.toSet)*/

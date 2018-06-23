@@ -127,8 +127,12 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
     construct: LogicalPatternGraph): MemOperator = ConstructGraph(table,onGraph,construct)
 
   override def planEmptyRecords(
-                                 in: MemOperator,
-                                 header: RecordHeader): MemOperator = EmptyRecords(in,header)
+    in: MemOperator,
+    header: RecordHeader): MemOperator = EmptyRecords(in,header)
+
+  override def planFromGraph(in: MemOperator, graph: LogicalCatalogGraph): MemOperator = FromGraph(in,graph)
+
+  override def planReturnGraph(in: MemOperator): MemOperator = ReturnGraph(in)
 
 
   override def planInitVarExpand(in: MemOperator, source: Var, edgeList: Var, target: Var, header: RecordHeader): MemOperator = ???
@@ -140,10 +144,6 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
   override def planExistsSubQuery(lhs: MemOperator, rhs: MemOperator, targetField: Var, header: RecordHeader): MemOperator = ???
 
   override def planBoundedVarExpand(first: MemOperator, second: MemOperator, third: MemOperator, rel: Var, edgeList: Var, target: Var, initialEndNode: Var, lower: Int, upper: Int, direction: Direction, header: RecordHeader, isExpandInto: Boolean): MemOperator = ???
-
-  override def planReturnGraph(in: MemOperator): MemOperator = ReturnGraph(in)
-
-  override def planFromGraph(in: MemOperator, graph: LogicalCatalogGraph): MemOperator = ??? //FromGraph(in,graph)
 
   override def planGraphUnionAll(graphs: List[MemOperator], qgn: QualifiedGraphName): MemOperator = ???
 }
