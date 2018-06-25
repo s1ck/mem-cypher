@@ -13,6 +13,8 @@
  */
 package org.opencypher.memcypher.impl.value
 
+import java.util.{Comparator, function}
+
 import org.opencypher.okapi.api.types._
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 
@@ -22,9 +24,11 @@ object CypherTypeOps {
     def ordering: Ordering[_] = ct match {
       case CTBoolean => Ordering[Boolean]
       case CTFloat => Ordering[Float]
-      case CTInteger | CTIntegerOrNull => Ordering[Long]
-      case CTString | CTStringOrNull => Ordering[String]
-      case CTNull => ??? //todo: add Ordering support
+      case CTInteger|CTIntegerOrNull => Ordering[Long]
+      case CTString => Ordering[String]
+      case CTStringOrNull => CTStringOrNullOrdering
+      case CTNull => CTNullOrdering
+      //todo: add Ordering support for other Cypher types like CTIntegerOrNull
       case _ => throw IllegalArgumentException("Cypher type with ordering support", ct)
     }
 
@@ -38,3 +42,32 @@ object CypherTypeOps {
   }
 
 }
+
+//just implemented needed fcts for group-op
+object CTNullOrdering extends Ordering[Null] {
+  override def compare(x: Null, y: Null): Int = 0
+
+  override def gt(x: Null, y: Null): Boolean = true
+}
+
+object CTStringOrNullOrdering extends Ordering[String] {
+  override def compare(x: String, y: String): Int = 0
+
+  override def gt(x: String, y: String): Boolean = {
+    if (x == null && y == null) true
+    else if (x == null) false
+    else if (y == null) true
+    else super.gt(x, y)
+  }
+}
+/* error: Long can't be equal null
+object CTIntegerOrNullOrdering extends Ordering[Long] {
+  override def compare(x: Long, y: Long): Int = 0
+
+  override def gt(x: Long, y: Long): Boolean = {
+    if (x == null && y == null) true
+    else if (x == null) false
+    else if (y == null) true
+    else super.gt(x, y)
+  }
+}*/
