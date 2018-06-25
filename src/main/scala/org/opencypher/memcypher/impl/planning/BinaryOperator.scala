@@ -218,6 +218,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       //workaround with renamings of Var-name in idExpr, because group-op alters column names from f.i. a to id(a)
       val renamedExpr = entity.groupBy.map {
         case _@Id(Var(name)) => Id(Var("id(" + name + ")")())()
+        case _@Labels(Var(name)) => Id(Var("labels("+name+")")())()
         case x => x
       }
 
@@ -295,6 +296,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
   def stringToExpr(value: String, validColumns: Map[String, CypherType], header: RecordHeader): Expr = {
     val propertyPattern = "(.*)\\Q.\\E(.*)".r
     val typePattern = "type\\Q(\\E(.*)\\Q)\\E".r
+    val labelsPattern = "labels\\Q(\\E(.*)\\Q)\\E".r
     //maybe also allow groupby labels() or haslabel() ? ...allow for property optional type given via pattern? ... string to cyphertype needed then (worth?)
     value match {
       case propertyPattern(varName, propertyName) =>
@@ -308,6 +310,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       case typePattern(validTypeParameter) if validColumns.keySet.contains(value) =>
         Type(Var(validTypeParameter)())()
       case validVarParameter if validColumns.keySet.contains(validVarParameter) => Id(Var(validVarParameter)())()
+      case labelsPattern(varName) if validColumns.keySet.contains(varName) => Labels(Var(varName)())() //maybe check via header if node
       case _ => throw IllegalArgumentException("valid parameter for groupBy", "invalid groupBy parameter " + value)
     }
   }

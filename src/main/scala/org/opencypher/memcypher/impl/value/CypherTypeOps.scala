@@ -22,8 +22,9 @@ object CypherTypeOps {
     def ordering: Ordering[_] = ct match {
       case CTBoolean => Ordering[Boolean]
       case CTFloat => Ordering[Float]
-      case CTInteger => Ordering[Long]
-      case CTString => Ordering[String]
+      case CTInteger | CTIntegerOrNull => Ordering[Long]
+      case CTString | CTStringOrNull => Ordering[String]
+      case CTNull => ??? //todo: add Ordering support
       case _ => throw IllegalArgumentException("Cypher type with ordering support", ct)
     }
 

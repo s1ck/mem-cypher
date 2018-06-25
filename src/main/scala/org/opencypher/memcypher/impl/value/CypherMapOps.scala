@@ -116,7 +116,7 @@ object CypherMapOps {
           s.v
 
         case l: ListLit =>
-          l.v.toList.map(evaluate(_))
+          l.v.toList.map(evaluate)
 
         case b: BoolLit =>
           b.v
