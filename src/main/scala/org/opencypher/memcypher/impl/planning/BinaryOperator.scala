@@ -87,20 +87,24 @@ final case class TabularUnionAll(left: MemOperator, right: MemOperator) extends 
   }
 }
 
-sealed trait aggregationExtension {
+sealed trait extendedEntity {
+  def wrappedEntity: ConstructedEntity
+
   def groupBy: Set[Expr]
 
   def aggregatedProperties: List[SetPropertyItem[Aggregator]]
 }
 
 //cant be case class because ConstructedEntity trait is sealed in openCypher
-class ConstructedNodeExtended(v: Var, labels: Set[Label], baseEntity: Option[Var],
-                              val groupBy: Set[Expr],
-                              val aggregatedProperties: List[SetPropertyItem[Aggregator]]) extends ConstructedNode(v, labels, baseEntity) with aggregationExtension
+//todo: case class wrapping constructedNode
+case class ConstructedNodeExtended(wrappedEntity: ConstructedNode,
+                                   groupBy: Set[Expr],
+                                   aggregatedProperties: List[SetPropertyItem[Aggregator]]) extends extendedEntity
 
-class ConstructedRelationshipExtended(v: Var, baseEntity: Option[Var], source: Var, target: Var, typ: Option[String],
-                                      val groupBy: Set[Expr],
-                                      val aggregatedProperties: List[SetPropertyItem[Aggregator]]) extends ConstructedRelationship(v, source, target, typ, baseEntity) with aggregationExtension
+//todo: case class wrapping constructedRel.
+case class ConstructedRelationshipExtended(wrappedEntity: ConstructedRelationship,
+                                           groupBy: Set[Expr],
+                                           aggregatedProperties: List[SetPropertyItem[Aggregator]]) extends extendedEntity
 
 
 final case class ConstructGraph(left: MemOperator, right: MemOperator, construct: LogicalPatternGraph) extends BinaryOperator {
@@ -131,7 +135,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       case item if item.propertyKey == "groupby" => groupBy_sets ::= item
       case item@other =>
         other.setValue match {
-          case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") =>
+          case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => //todo: use pattenmatch to give parameters into function (otherwise twice aggr. pattern)
             aggregated_sets ::= SetPropertyItem(item.propertyKey, item.variable, stringToAggrExpr(s.v, matchTable.columnType, matchTable.header))
           case _ => remaining_sets ::= other
         }
@@ -151,7 +155,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       })
     }
 
-    val extendedEntities = newEntities.map(x => createExtendedEntity(x, groupBy_sets.filter(_.variable == x.v), aggregated_sets.filter(_.variable == x.v), matchTable))
+    val extendedEntities = newEntities.map(x => createExtendedEntity(x, groupBy_sets.find(_.variable == x.v), aggregated_sets.filter(_.variable == x.v), matchTable))
 
     val extendedNodes = extendedEntities.collect { case n: ConstructedNodeExtended => n }
     val extendedRelationships = extendedEntities.collect { case r: ConstructedRelationshipExtended => r }
@@ -169,73 +173,75 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
 
     //apply remaining SetPropertyItems
     val result = remaining_sets.foldLeft(extendedMatchTable.data) { (data, item) =>
-      data.project(item.setValue, item.variable.name + "." + item.propertyKey + ":" + item.setValue.cypherType.material.name)(constructHeader, context)
+      data.project(item.setValue, RichExpression(Property(Var(item.variable.name)(), PropertyKey(item.propertyKey))(item.setValue.cypherType)).columnName)(constructHeader, context) // use columnname fct
     }
     val stored_ids = IdGenerator.storedIDs //for testing purpose
 
     val important_columns = constructHeader.contents.map(slot => RichRecordSlotContent(slot).columnName)
-    val compact_result = result.select(important_columns)(constructHeader, context) //remove
+    val compact_result = result.select(important_columns)(constructHeader, context)
 
     MemPhysicalResult(MemRecords(compact_result, constructHeader), MemCypherGraph.empty, name)
   }
 
-  def createExtendedEntity(newEntity: ConstructedEntity, groupBy: List[SetPropertyItem[Expr]], aggregatedProperties: List[SetPropertyItem[Aggregator]], matchTable: MemRecords): ConstructedEntity with aggregationExtension = {
+  //todo: groupby no list just one SetPropertyItem
+  def createExtendedEntity(newEntity: ConstructedEntity, groupBy: Option[SetPropertyItem[Expr]], aggregatedProperties: List[SetPropertyItem[Aggregator]], matchTable: MemRecords): extendedEntity = {
     var groupByVarSet = newEntity.baseEntity match {
       case Some(v) => Set[Expr](Id(v)())
-      case None => Set[Expr]()
-    }
-    if (groupBy.nonEmpty) {
-      val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(groupBy.head.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr , maybe sort this list?
-      potentialListOfGroupings match {
-        case _@CypherList(values) => groupByVarSet ++= values.map(y => stringToExpr(y.toString(), matchTable.columnType, matchTable.header))
-        case _@CypherString(string) => groupByVarSet += stringToExpr(string, matchTable.columnType, matchTable.header)
-        case _: CypherInteger | _: CypherBoolean => groupByVarSet += StringLit("constant")(CTString) //groupby constant --> only one entity created
-        case error => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + error.getClass.getSimpleName)
-      }
+      case None =>
+        groupBy match {
+          case Some(setItem) =>
+            val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(setItem.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr , maybe sort this list?
+            potentialListOfGroupings match {
+              case CypherList(values) => values.map(y => stringToExpr(y.toString(), matchTable.columnType, matchTable.header)).toSet
+              case CypherString(string) => Set[Expr](stringToExpr(string, matchTable.columnType, matchTable.header))
+              case _: CypherInteger | _: CypherBoolean => Set[Expr](StringLit("constant")(CTString)) //groupby constant --> only one entity created
+              case error => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + error.getClass.getSimpleName)
+            }
+          case None => Set[Expr]()
+        }
     }
     newEntity match {
-      case _@ConstructedNode(v, labels, baseEntity) => new ConstructedNodeExtended(v, labels, baseEntity, groupByVarSet, aggregatedProperties)
-      case _@ConstructedRelationship(v, source, target, typ, baseEntity) =>
-        groupByVarSet ++= Set(Id(source)(CTNode), Id(target)(CTNode)) // relationships implicit grouped by source and target node
-        new ConstructedRelationshipExtended(v, baseEntity, source, target, typ, groupByVarSet, aggregatedProperties)
+      case n: ConstructedNode => ConstructedNodeExtended(n, groupByVarSet, aggregatedProperties)
+      case r: ConstructedRelationship =>
+        groupByVarSet ++= Set(Id(r.source)(CTNode), Id(r.target)(CTNode)) // relationships implicit grouped by source and target node
+        ConstructedRelationshipExtended(r, groupByVarSet, aggregatedProperties)
     }
   }
 
-  def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
+  //todo: put in extra methods
+  def extendMatchTable(entity: extendedEntity, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
     implicit val header: RecordHeader = matchTable.header
-    val idExpr = Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())()
+    val idExpr = Id(ListLit(StringLit(entity.wrappedEntity.v.name)() +: entity.groupBy.toIndexedSeq)())()
     var newData = matchTable.data
 
     if (entity.aggregatedProperties.nonEmpty) {
       //workaround with renamings of Var-name in idExpr, because group-op alters column names from f.i. a to id(a)
       val renamedExpr = entity.groupBy.map {
-        case _@Id(Var(name)) => Id(Var("id(" + name + ")")())()
-        case _@Labels(Var(name)) => Id(Var("labels(" + name + ")")())()
+        case expr@Id(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
+        case expr@Labels(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
         case x => x
       }
-      val aggregations = entity.aggregatedProperties.foldLeft(List[(Var, Aggregator)]())((list, setItem) =>
-        list :+ (Var(setItem.variable.name + "." + setItem.propertyKey + ":STRING")() -> setItem.setValue)) //:STRING because header expects string
+      val aggregations = entity.aggregatedProperties.foldLeft(List[(Var, Aggregator)]())((list, setItem) => //todo: maybe method setItem to columName?
+        list :+ (Var(RichExpression(Property(Var(setItem.variable.name)(), PropertyKey(setItem.propertyKey))(CTString)).columnName)() -> setItem.setValue)) //:STRING because header expects string todo: use columnName
       newData = newData.group(entity.groupBy, aggregations.toSet)
         .innerJoin(newData, ListLit(renamedExpr.toIndexedSeq)(), ListLit(entity.groupBy.toIndexedSeq)())
     }
-    entity match {
-      case r: ConstructedRelationshipExtended =>
+    entity.wrappedEntity match {
+      case r: ConstructedRelationship =>
         newData = newData
-          .project(Id(r.source)(), "source(" + r.v.name + ")")
-          .project(Id(r.target)(), "target(" + r.v.name + ")")
+          .project(Id(r.source)(), RichExpression(StartNode(r.v)()).columnName)
+          .project(Id(r.target)(), RichExpression(EndNode(r.v)()).columnName)
         r.typ match {
-          case Some(typ) => newData = newData.project(StringLit(typ)(), "type(" + r.v.name + ")")
+          case Some(typ) => newData = newData.project(StringLit(typ)(), RichExpression(Type(r.v)()).columnName)
           case None =>
         }
-      //todo: polish code
-      case n => //n:ConstructedNodeExtended throws compiler error "unreachable code"
-        val z = n.asInstanceOf[ConstructedNodeExtended]
-        z.labels.foreach(label => newData = newData.project(TrueLit(), entity.v.name + ":" + label.name))
+      case n: ConstructedNode =>
+        n.labels.foreach(label => newData = newData.project(TrueLit(), RichExpression(HasLabel(Var(n.v.name)(), Label(label.name))()).columnName))
     }
-    newData = newData.project(idExpr, entity.v.name)
-    entity.baseEntity match {
+    newData = newData.project(idExpr, entity.wrappedEntity.v.name)
+    entity.wrappedEntity.baseEntity match {
       case Some(base) =>
-        newData = copySlotContents(entity.v, base, clone = false, MemRecords(newData, header)).data
+        newData = copySlotContents(entity.wrappedEntity.v, base, clone = false, MemRecords(newData, header)).data
       case None =>
     }
     MemRecords(newData, header)
@@ -326,9 +332,9 @@ object IdGenerator {
   def generateID(constructedEntityName: String, groupBy: List[String] = List()): Long = {
     if (groupBy.nonEmpty) {
       //generate with groupbyKey ( schema: "entityName|baseValue1|baseValue2...")
-      val key = groupBy.foldLeft(constructedEntityName)((x, based_value) => x + "|" + based_value)
-      if (storedIDs.contains(key)) storedIDs.getOrElse(key, -1) //return found Id
-      else { //generate new ID
+      val key = groupBy.mkString(constructedEntityName, "|", "")
+      if (storedIDs.contains(key)) storedIDs(key) //return found Id
+      else { //generate and save new ID put in storedIds.getOrElse
         storedIDs += key -> current_max_id.incrementAndGet()
         current_max_id.get()
       }
