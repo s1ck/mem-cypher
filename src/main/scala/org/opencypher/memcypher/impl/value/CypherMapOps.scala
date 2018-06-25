@@ -45,7 +45,7 @@ object CypherMapOps {
           logger.info(s"Direct lookup: Expr `$expr` with column name `${expr.columnName}` in $map")
           map(expr.columnName)
 
-        //also used to generate new IDs for construct here!
+        //!also used to generate new IDs for construct
         case Id(v) =>
           v match {
             case v: Var => {
@@ -55,7 +55,7 @@ object CypherMapOps {
             case l: ListLit => {
               logger.info(s"Id generation: `$l` in $map")
               val list = evaluate(l).cast[CypherList].value //can be only cypherList as ListLit gets evaluated to Cypherlist
-              generateID(list.head.toString(), list.tail.map(_.toString())) //maybe make generateID arguments just one list?
+              generateID(list.head.toString(), list.tail.map(_.toString())) //maybe make arguments for generateID just one list and split inside the function?
             }
             case x => throw new IllegalArgumentException("unexpected type for id-expr evaluation " + x.getClass)
           }

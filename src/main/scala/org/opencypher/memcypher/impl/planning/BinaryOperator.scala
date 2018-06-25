@@ -121,31 +121,29 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     var groupBy_sets = List[SetPropertyItem[Expr]]()
     var aggregated_sets = List[SetPropertyItem[Aggregator]]()
     var remaining_sets = List[SetPropertyItem[Expr]]()
-
     //empty result due to empty matchTable as constructPattern evaluated for each row in matchTable
     if (matchTable.size == 0)
       return MemPhysicalResult(MemRecords(Embeddings.empty, RecordHeader.empty), MemCypherGraph.empty, name)
 
     IdGenerator.init(getHighestIDtoClone(clonedVarsToInputVars.values.toSet, matchTable))
-
     //put each SetPropertyItem object into corresponding list
     sets.foreach {
       case item if item.propertyKey == "groupby" => groupBy_sets ::= item
       case item@other =>
         other.setValue match {
-          case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => aggregated_sets ::= SetPropertyItem(item.propertyKey, item.variable, stringToAggrExpr(s.v, matchTable.columnType, matchTable.header))
+          case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") =>
+            aggregated_sets ::= SetPropertyItem(item.propertyKey, item.variable, stringToAggrExpr(s.v, matchTable.columnType, matchTable.header))
           case _ => remaining_sets ::= other
         }
     }
 
-    val copiedHeader = clonedVarsToInputVars.foldLeft(RecordHeader.empty) { (head, tupel) =>
-      tupel._1.cypherType match {
-        case _: CTNode => head ++ RecordHeader.nodeFromSchema(tupel._1, schema)
-        case _: CTRelationship => head ++ RecordHeader.relationshipFromSchema(tupel._1, schema)
+    val copiedHeader = clonedVarsToInputVars.foldLeft(RecordHeader.empty) { (head, tuple) =>
+      tuple._1.cypherType match {
+        case _: CTNode => head ++ RecordHeader.nodeFromSchema(tuple._1, schema)
+        case _: CTRelationship => head ++ RecordHeader.relationshipFromSchema(tuple._1, schema)
         case _ => head
       }
     }
-
     val constructHeader = newEntities.foldLeft(copiedHeader) { (head, entity) =>
       head ++ (entity match {
         case _: ConstructedNode => RecordHeader.nodeFromSchema(entity.v, schema)
@@ -153,7 +151,6 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       })
     }
 
-    //todo: so many vars needed?
     val extendedEntities = newEntities.map(x => createExtendedEntity(x, groupBy_sets.filter(_.variable == x.v), aggregated_sets.filter(_.variable == x.v), matchTable))
 
     val extendedNodes = extendedEntities.collect { case n: ConstructedNodeExtended => n }
@@ -162,25 +159,24 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val clonedNodes = clonedVarsToInputVars.collect { case n if n._1.cypherType.equals(CTNode) => n }
     val clonedRelationships = clonedVarsToInputVars.collect { case r if r._1.cypherType.equals(CTRelationship) => r }
 
-    var extendedMatchTable = matchTable //todo: for copy of normal header needed?!
+    var extendedMatchTable = matchTable //for copy of normal header needed
 
-    //todo rewrite foreach into foldLeft ?!
+    //rewrite foreach into foldLeft ? (would need more variables)
     extendedNodes.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context))
-    clonedNodes.foreach(x =>
-      extendedMatchTable = copySlotContents(x._1, x._2, clone = true, extendedMatchTable))
-    extendedRelationships.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context)) //only relationship id generated for now
-    clonedRelationships.foreach(x =>
-      extendedMatchTable = copySlotContents(x._1, x._2, clone = true, extendedMatchTable))
+    clonedNodes.foreach(x => extendedMatchTable = copySlotContents(x._1, x._2, clone = true, extendedMatchTable)) //nodes before relationships
+    extendedRelationships.foreach(entity => extendedMatchTable = extendMatchTable(entity, extendedMatchTable)(context))
+    clonedRelationships.foreach(x => extendedMatchTable = copySlotContents(x._1, x._2, clone = true, extendedMatchTable))
 
-    val stored_ids = IdGenerator.storedIDs
+    //apply remaining SetPropertyItems
+    val result = remaining_sets.foldLeft(extendedMatchTable.data) { (data, item) =>
+      data.project(item.setValue, item.variable.name + "." + item.propertyKey + ":" + item.setValue.cypherType.material.name)(constructHeader, context)
+    }
+    val stored_ids = IdGenerator.storedIDs //for testing purpose
 
     val important_columns = constructHeader.contents.map(slot => RichRecordSlotContent(slot).columnName)
-    //todo: why drag the whole MemRecord til now if then just used to get the Embeddings of it?
-    val compact_result = extendedMatchTable.data.select(important_columns)(constructHeader, context)
-    //todo remaining_sets could be projected before? as constructheader should contain even new properties
-    val result = remaining_sets.foldLeft(compact_result) { (table, item) => table.project(item.setValue, item.variable.name + "." + item.propertyKey + ":" + item.setValue.cypherType.material.name)(constructHeader, context) }
+    val compact_result = result.select(important_columns)(constructHeader, context) //remove
 
-    MemPhysicalResult(MemRecords(result, constructHeader), MemCypherGraph.empty, name)
+    MemPhysicalResult(MemRecords(compact_result, constructHeader), MemCypherGraph.empty, name)
   }
 
   def createExtendedEntity(newEntity: ConstructedEntity, groupBy: List[SetPropertyItem[Expr]], aggregatedProperties: List[SetPropertyItem[Aggregator]], matchTable: MemRecords): ConstructedEntity with aggregationExtension = {
@@ -188,7 +184,6 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       case Some(v) => Set[Expr](Id(v)())
       case None => Set[Expr]()
     }
-
     if (groupBy.nonEmpty) {
       val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(groupBy.head.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr , maybe sort this list?
       potentialListOfGroupings match {
@@ -198,7 +193,6 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
         case error => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + error.getClass.getSimpleName)
       }
     }
-
     newEntity match {
       case _@ConstructedNode(v, labels, baseEntity) => new ConstructedNodeExtended(v, labels, baseEntity, groupByVarSet, aggregatedProperties)
       case _@ConstructedRelationship(v, source, target, typ, baseEntity) =>
@@ -207,27 +201,23 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     }
   }
 
-
   def extendMatchTable(entity: ConstructedEntity with aggregationExtension, matchTable: MemRecords)(implicit context: MemRuntimeContext): MemRecords = {
     implicit val header: RecordHeader = matchTable.header
     val idExpr = Id(ListLit(StringLit(entity.v.name)() +: entity.groupBy.toIndexedSeq)())()
-
     var newData = matchTable.data
 
     if (entity.aggregatedProperties.nonEmpty) {
       //workaround with renamings of Var-name in idExpr, because group-op alters column names from f.i. a to id(a)
       val renamedExpr = entity.groupBy.map {
         case _@Id(Var(name)) => Id(Var("id(" + name + ")")())()
-        case _@Labels(Var(name)) => Id(Var("labels("+name+")")())()
+        case _@Labels(Var(name)) => Id(Var("labels(" + name + ")")())()
         case x => x
       }
-
-      //todo: fix problem with ct like when expecting CTInteger CTNull in group (error Cypher type with ordering support expected & null found)
-      val aggregations = entity.aggregatedProperties.foldLeft(List[(Var, Aggregator)]())((list, setItem) => list :+ (Var(setItem.variable.name + "." + setItem.propertyKey + ":STRING")() -> setItem.setValue)) //:STRING because header expects string
+      val aggregations = entity.aggregatedProperties.foldLeft(List[(Var, Aggregator)]())((list, setItem) =>
+        list :+ (Var(setItem.variable.name + "." + setItem.propertyKey + ":STRING")() -> setItem.setValue)) //:STRING because header expects string
       newData = newData.group(entity.groupBy, aggregations.toSet)
         .innerJoin(newData, ListLit(renamedExpr.toIndexedSeq)(), ListLit(entity.groupBy.toIndexedSeq)())
     }
-
     entity match {
       case r: ConstructedRelationshipExtended =>
         newData = newData
@@ -237,39 +227,36 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
           case Some(typ) => newData = newData.project(StringLit(typ)(), "type(" + r.v.name + ")")
           case None =>
         }
-      //todo: polish this segement of code
-      case n => //_:ConstructedNodeExtended throws compiler error "unreachable code"
+      //todo: polish code
+      case n => //n:ConstructedNodeExtended throws compiler error "unreachable code"
         val z = n.asInstanceOf[ConstructedNodeExtended]
         z.labels.foreach(label => newData = newData.project(TrueLit(), entity.v.name + ":" + label.name))
     }
     newData = newData.project(idExpr, entity.v.name)
-
     entity.baseEntity match {
       case Some(base) =>
         newData = copySlotContents(entity.v, base, clone = false, MemRecords(newData, header)).data
       case None =>
     }
-
     MemRecords(newData, header)
   }
-
 
   def copySlotContents(newVar: Var, baseVar: Var, clone: Boolean, table: MemRecords): MemRecords = {
 
     if (newVar.equals(baseVar)) return table
     var slotsToCopy = table.header.childSlots(baseVar)
-    if (clone) slotsToCopy :+= table.header.slotFor(baseVar)
+    if (clone) slotsToCopy :+= table.header.slotFor(baseVar) //adds id slot
 
     val newData = slotsToCopy.foldLeft(table.data) { (data, slot) => {
       val columnName = RichRecordSlotContent(slot.withOwner(newVar).content).columnName
-      val exists = slot.content.key match {
+      val columnExists = slot.content.key match {
         case _@Property(_, key) =>
-          val columnNameWithoutType = newVar.name + "." + key.name //for properties ... check if one of the columns startswith varname.propertyname (ignore cyphertype)
+          val columnNameWithoutType = newVar.name + "." + key.name //for properties ... check if one of the columns starts with varname.propertyname (ignore cyphertype)
           table.columnType.keySet.exists(_.startsWith(columnNameWithoutType)) //only x.age:Integer or x.age:String can exist this way
         case _ =>
           table.columnType.keySet.contains(columnName)
       }
-      if (!exists) data.project(slot.content.key, columnName)(table.header, MemRuntimeContext.empty)
+      if (!columnExists) data.project(slot.content.key, columnName)(table.header, MemRuntimeContext.empty)
       else data
     }
     }
@@ -277,7 +264,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
   }
 
   def stringToAggrExpr(value: String, validColumns: Map[String, CypherType], header: RecordHeader): Aggregator = {
-    val aggregationPattern = "(count|sum|min|max|collect)\\Q(\\E(distinct )?(.*)\\Q)\\E".r
+    val aggregationPattern = "(count|sum|min|max|collect)\\Q(\\E(distinct )?(.*)\\Q)\\E".r //in outer method this pattern already checked
     value match {
       case aggregationPattern(aggr, distinct, inner) =>
         val innerExpr = stringToExpr(inner, validColumns, header)
@@ -334,7 +321,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
 
 object IdGenerator {
   private val current_max_id = new AtomicLong(-1)
-  var storedIDs: Map[String, Long] = Map[String, Long]()
+  var storedIDs: Map[String, Long] = Map[String, Long]() //todo: make private
 
   def generateID(constructedEntityName: String, groupBy: List[String] = List()): Long = {
     if (groupBy.nonEmpty) {

@@ -13,8 +13,6 @@
  */
 package org.opencypher.memcypher.impl.value
 
-import java.util.{Comparator, function}
-
 import org.opencypher.okapi.api.types._
 import org.opencypher.okapi.impl.exception.IllegalArgumentException
 
@@ -28,7 +26,7 @@ object CypherTypeOps {
       case CTString => Ordering[String]
       case CTStringOrNull => CTStringOrNullOrdering
       case CTNull => CTNullOrdering
-      //todo: add Ordering support for other Cypher types like CTIntegerOrNull
+      //todo: check if CTIntegerOrNull now fully supported
       case _ => throw IllegalArgumentException("Cypher type with ordering support", ct)
     }
 
@@ -43,7 +41,7 @@ object CypherTypeOps {
 
 }
 
-//just implemented needed fcts for group-op
+//just implemented needed functions for group-op
 object CTNullOrdering extends Ordering[Null] {
   override def compare(x: Null, y: Null): Int = 0
 
@@ -60,14 +58,4 @@ object CTStringOrNullOrdering extends Ordering[String] {
     else super.gt(x, y)
   }
 }
-/* error: Long can't be equal null
-object CTIntegerOrNullOrdering extends Ordering[Long] {
-  override def compare(x: Long, y: Long): Int = 0
 
-  override def gt(x: Long, y: Long): Boolean = {
-    if (x == null && y == null) true
-    else if (x == null) false
-    else if (y == null) true
-    else super.gt(x, y)
-  }
-}*/
