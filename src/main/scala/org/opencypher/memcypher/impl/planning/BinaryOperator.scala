@@ -133,7 +133,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
       case item if item.propertyKey == "groupby" => groupBy_sets ::= item
       case item@other =>
         other.setValue match {
-          case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => aggregated_sets ::= SetPropertyItem(item.propertyKey, item.variable, stringToAggrExpr(s.v, matchTable.columnType))
+          case s: StringLit if s.v.matches("(count|sum|min|max|collect)\\Q(\\E(.*)\\Q)\\E") => aggregated_sets ::= SetPropertyItem(item.propertyKey, item.variable, stringToAggrExpr(s.v, matchTable.columnType, matchTable.header))
           case _ => remaining_sets ::= other
         }
     }
@@ -192,8 +192,8 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     if (groupBy.nonEmpty) {
       val potentialListOfGroupings = RichCypherMap(CypherMap.empty).evaluate(groupBy.head.setValue)(RecordHeader.empty, MemRuntimeContext.empty) //evaluate Expr , maybe sort this list?
       potentialListOfGroupings match {
-        case _@CypherList(values) => groupByVarSet ++= values.map(y => stringToExpr(y.toString(), matchTable.columnType))
-        case _@CypherString(string) => groupByVarSet += stringToExpr(string, matchTable.columnType)
+        case _@CypherList(values) => groupByVarSet ++= values.map(y => stringToExpr(y.toString(), matchTable.columnType, matchTable.header))
+        case _@CypherString(string) => groupByVarSet += stringToExpr(string, matchTable.columnType, matchTable.header)
         case _: CypherInteger | _: CypherBoolean => groupByVarSet += StringLit("constant")(CTString) //groupby constant --> only one entity created
         case error => throw IllegalArgumentException("wrong value typ for groupBy: should be CypherList but found " + error.getClass.getSimpleName)
       }
@@ -275,11 +275,11 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     MemRecords(newData, header)
   }
 
-  def stringToAggrExpr(value: String, validColumns: Map[String, CypherType]): Aggregator = {
+  def stringToAggrExpr(value: String, validColumns: Map[String, CypherType], header: RecordHeader): Aggregator = {
     val aggregationPattern = "(count|sum|min|max|collect)\\Q(\\E(distinct )?(.*)\\Q)\\E".r
     value match {
       case aggregationPattern(aggr, distinct, inner) =>
-        val innerExpr = stringToExpr(inner, validColumns)
+        val innerExpr = stringToExpr(inner, validColumns, header)
         aggr match {
           case "count" => Count(innerExpr, distinct != null)()
           case "sum" => Sum(innerExpr)()
@@ -292,17 +292,19 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     }
   }
 
-  def stringToExpr(value: String, validColumns: Map[String, CypherType]): Expr = {
+  def stringToExpr(value: String, validColumns: Map[String, CypherType], header: RecordHeader): Expr = {
     val propertyPattern = "(.*)\\Q.\\E(.*)".r
     val typePattern = "type\\Q(\\E(.*)\\Q)\\E".r
     //maybe also allow groupby labels() or haslabel() ? ...allow for property optional type given via pattern? ... string to cyphertype needed then (worth?)
     value match {
       case propertyPattern(varName, propertyName) =>
-        val matchingKeys = validColumns.keySet.filter(_.startsWith(value))
-        if (matchingKeys.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + value)
-        //todo: !!!fix problem with types like CTStringOrNull ! ... get CTtype via header?!
-        val propertyCypherType = validColumns.getOrElse(matchingKeys.head, CTWildcard)
-        Property(Var(varName)(), PropertyKey(propertyName))(propertyCypherType)
+        //get Cypher type via header, because in validColumns-Map wrong sometimes Cypher type saved (like CTNULL instead of CTStringOrNull
+        val matchingSlots = header.childSlots(Var(varName)()).filter(_.content.key match {
+          case x: Property => x.key.name.equals(propertyName)
+          case _ => false
+        })
+        if (matchingSlots.isEmpty) throw IllegalArgumentException("valid property for groupBy", "invalid groupBy property " + value)
+        Property(Var(varName)(), PropertyKey(propertyName))(matchingSlots.head.content.cypherType)
       case typePattern(validTypeParameter) if validColumns.keySet.contains(value) =>
         Type(Var(validTypeParameter)())()
       case validVarParameter if validColumns.keySet.contains(validVarParameter) => Id(Var(validVarParameter)())()
