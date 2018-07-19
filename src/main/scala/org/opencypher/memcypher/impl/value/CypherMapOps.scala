@@ -38,22 +38,22 @@ object CypherMapOps {
       expr match {
 
         case Param(name) =>
-          logger.info(s"Parameter lookup: `$name` in ${context.parameters}")
+          //logger.info(s"Parameter lookup: `$name` in ${context.parameters}")
           context.parameters(name)
 
         case _: Var | _: Param | _: Property | _: HasLabel | _: Type | _: StartNode | _: EndNode =>
-          logger.info(s"Direct lookup: Expr `$expr` with column name `${expr.columnName}` in $map")
+          //logger.info(s"Direct lookup: Expr `$expr` with column name `${expr.columnName}` in $map")
           map(expr.columnName)
 
         //!also used to generate new IDs for construct
         case Id(v) =>
           v match {
             case v: Var => {
-              logger.info(s"Id lookup: `$v` in $map")
+              //logger.info(s"Id lookup: `$v` in $map")
               evaluate(v)
             }
             case l: ListLit => {
-              logger.info(s"Id generation: `$l` in $map")
+              //logger.info(s"Id generation: `$l` in $map")
               val list = evaluate(l).cast[CypherList].value //can be only cypherList as ListLit gets evaluated to Cypherlist
               generateID(list.head.toString(), list.tail.map(_.toString())) //maybe make arguments for generateID just one list and split inside the function?
             }
@@ -64,7 +64,7 @@ object CypherMapOps {
           evaluate(Type(rel)()) == CypherString(relType.name)
 
         case Labels(innerExpr) =>
-          logger.info(s"Labels: `$innerExpr` in: $map")
+          //logger.info(s"Labels: `$innerExpr` in: $map")
           val node = Var(innerExpr.columnName)(CTNode)
           val labelExprs = header.labels(node)
           val labelNames = labelExprs.map(_.label.name)
@@ -76,31 +76,31 @@ object CypherMapOps {
             .toList
 
         case Equals(lhs, rhs) =>
-          logger.info(s"Equals: `$expr` in: $map")
+          //logger.info(s"Equals: `$expr` in: $map")
           evaluate(lhs) == evaluate(rhs)
 
         case Not(innerExpr) =>
-          logger.info(s"Not: `$innerExpr` in: $map")
+          //logger.info(s"Not: `$innerExpr` in: $map")
           !evaluate(innerExpr)
 
         case IsNotNull(innerExpr) =>
-          logger.info(s"IsNotNull: `$innerExpr` in: $map")
+          //logger.info(s"IsNotNull: `$innerExpr` in: $map")
           evaluate(innerExpr) != CypherNull
 
         case Ands(exprs) =>
-          logger.info(s"Ands: ${exprs.mkString("[", ",", "]")}")
+          //logger.info(s"Ands: ${exprs.mkString("[", ",", "]")}")
           exprs.map(evaluate).reduce(_ && _)
 
         case Ors(exprs) =>
-          logger.info(s"Ors: ${exprs.mkString("[", ",", "]")}")
+          //logger.info(s"Ors: ${exprs.mkString("[", ",", "]")}")
           exprs.map(evaluate).reduce(_ || _)
 
         case GreaterThan(lhs, rhs) =>
-          logger.info(s"GreaterThan: `$expr` in: $map")
+          //logger.info(s"GreaterThan: `$expr` in: $map")
           evaluate(lhs) > evaluate(rhs)
 
         case Add(lhs, rhs) =>
-          logger.info(s"Add: `$expr` in: $map")
+          //logger.info(s"Add: `$expr` in: $map")
           evaluate(lhs) + evaluate(rhs)
 
         case _: TrueLit =>

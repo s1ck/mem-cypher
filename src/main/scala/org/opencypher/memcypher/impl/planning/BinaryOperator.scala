@@ -29,6 +29,8 @@ import org.opencypher.okapi.logical.impl.{ConstructedEntity, ConstructedNode, Co
 import org.opencypher.okapi.relational.impl.physical.{InnerJoin, JoinType, LeftOuterJoin, RightOuterJoin}
 import org.opencypher.okapi.relational.impl.table._
 
+import scala.concurrent.duration.Duration
+
 private[memcypher] abstract class BinaryOperator extends MemOperator {
 
   def left: MemOperator
@@ -116,7 +118,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
   override def header: RecordHeader = RecordHeader.empty
 
   override def executeBinary(left: MemPhysicalResult, right: MemPhysicalResult)(implicit context: MemRuntimeContext): MemPhysicalResult = {
-
+    val startTime = System.nanoTime()
     implicit val session: MemCypherSession = left.workingGraph.session
     val matchTable = left.records
     val LogicalPatternGraph(schema, clonedVarsToInputVars, newEntities, sets, _, name) = construct
@@ -169,7 +171,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val tableWithNodesAndConstructedRelationships = extendedRelationships.foldLeft(tableWithNodes)((table, entity) => extendMatchTable(entity, table)(context))
     val extendedMatchTable = clonedRelationships.foldLeft(tableWithNodesAndConstructedRelationships)((table, tuple) => copySlotContents(tuple._1, tuple._2, clone = true, table))
 
-    //apply remaining SetPropertyItems
+    //apply remaining SetPropertyItems todo: what constant prop,labels and type could be projected here? possible improvment
     val result = remaining_sets.foldLeft(extendedMatchTable.data) { (data, item) =>
       data.project(item.setValue, RichExpression(Property(Var(item.variable.name)(), PropertyKey(item.propertyKey))(item.setValue.cypherType)).columnName)(constructHeader, context)
     }
@@ -177,6 +179,9 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
 
     val important_columns = constructHeader.contents.map(slot => RichRecordSlotContent(slot).columnName)
     val compact_result = result.select(important_columns)(constructHeader, context)
+
+    val timeNeeded = Duration.fromNanos(System.nanoTime() - startTime)
+    logger.info("graph construction took: " + timeNeeded.toMillis + " ms")
 
     MemPhysicalResult(MemRecords(compact_result, constructHeader), MemCypherGraph.empty, name)
   }
