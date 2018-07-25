@@ -31,7 +31,7 @@ object ConstructEval extends App {
       //System.gc()
       val graph = getData(dataSize)
       val result = graph.cypher(query).getRecords
-      //logger.info("size " + ObjectSizeCalculator.getObjectSize(result.collect) + " bytes")
+      logger.info("size " + ObjectSizeCalculator.getObjectSize(result.collect) + " bytes")
     }
   }
 
@@ -104,7 +104,7 @@ object ConstructEval extends App {
     val pattern_motive = "Match (x) Construct New (a)-[:e]->(b)-[:e]->(c)-[:e]->(d)-[:e]->(e) Return Graph"
     val simple_pattern = "Match (x) Construct New (a)-[:e]->(b),(a)-[:e]->(b),(a)-[:e]->(b),(a)-[:e]->(b),(c),(d),(e) Return Graph"
 
-    val graph = getData(1000)
+    val graph = getData(100000)
     logger.info("motive_pattern")
     val result_motive = graph.cypher(pattern_motive).getRecords
     logger.info("simple_pattern")
@@ -116,13 +116,19 @@ object ConstructEval extends App {
   //PrintTimings.set()
   implicit val memCypher: MemCypherSession = MemCypherSession.create
   regardingInputCardinality(100,20) //warmup
-  regardingInputCardinality(50000, 20)
-  //regardingOutputCardinality(List(1,"b.two","b.five","b.ten","b.twenty","b.fifty","b.hundred","b"),1000)
-  //regardingOutputCardinality(List(List("b.two","b.five"),List("b.two","b.ten"),List("b.two","b","b.five","b.ten")),1000) //todo more Lists
-  //regardingAggregatedProperties("collect(b)",5,1000)
-  //regardingNodeNumber(10,1000)
-  //regardingEdgeNumber(10,1000)
-  //motivetheory()
+  regardingInputCardinality(50000, 10)
+  regardingOutputCardinality(List(1,"b.two","b.five","b.ten","b.twenty","b.fifty","b.hundred","b"),1000) //warmup
+  regardingOutputCardinality(List(1,"b.two","b.five","b.ten","b.twenty","b.fifty","b.hundred","b"),100000)
+  regardingOutputCardinality(List(List("b.two","b.five"),List("b.two","b.ten"),List("b.two","b","b.five","b.ten")),1000) //warmup
+  regardingOutputCardinality(List(List("b.two","b.five"),List("b.two","b.ten"),List("b.two","b.five","b.ten"),List("b.two","b.hundred"),List("b.five","b.hundred"),List("b.ten","b.hundred"),List("b.twenty","b.hundred"),List("b.fifty","b.hundred"),List("b.ten","b.twenty","b.hundred"),List("b.ten","b.fifty","b.hundred"),List("b"),List("b","b.ten"),List("b","b.ten","b.fifty","b.hundred")),100000) //todo more Lists
+  regardingAggregatedProperties("collect(b)",5,1000) //warmup
+  regardingAggregatedProperties("collect(b)",20,100000)
+  regardingNodeNumber(10,1000)
+  regardingNodeNumber(10,100000)
+  regardingEdgeNumber(10,1000)
+  regardingEdgeNumber(10,100000)
+  motivetheory()
+  motivetheory()
 }
 
 

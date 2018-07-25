@@ -171,7 +171,7 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     val tableWithNodesAndConstructedRelationships = extendedRelationships.foldLeft(tableWithNodes)((table, entity) => extendMatchTable(entity, table)(context))
     val extendedMatchTable = clonedRelationships.foldLeft(tableWithNodesAndConstructedRelationships)((table, tuple) => copySlotContents(tuple._1, tuple._2, clone = true, table))
 
-    //apply remaining SetPropertyItems todo: what constant prop,labels and type could be projected here? possible improvment
+    //apply remaining SetPropertyItems todo: constant properties,labels and type could be projected here? possible improvment
     val result = remaining_sets.foldLeft(extendedMatchTable.data) { (data, item) =>
       data.project(item.setValue, RichExpression(Property(Var(item.variable.name)(), PropertyKey(item.propertyKey))(item.setValue.cypherType)).columnName)(constructHeader, context)
     }
@@ -216,7 +216,6 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
     var newData = matchTable.data
 
     if (entity.aggregatedProperties.nonEmpty) {
-      //todo: extra method computeaggregateProperties
       //workaround with renamings of Var-name in idExpr, because group-op alters column names from f.i. a to id(a)
       val renamedExpr = entity.groupBy.map {
         case expr@Id(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
@@ -229,15 +228,15 @@ final case class ConstructGraph(left: MemOperator, right: MemOperator, construct
         .innerJoin(newData, ListLit(renamedExpr.toIndexedSeq)(), ListLit(entity.groupBy.toIndexedSeq)())
     }
 
-    val newDataWith = projectConstructedEntity(entity.wrappedEntity, newData, idExpr)(context, header) //better var name?
+    val newDataWithEssentialColumns  = projectConstructedEntity(entity.wrappedEntity, newData, idExpr)(context, header) //better var name?
 
-    val dataWithCopy = entity.wrappedEntity.baseEntity match {
+    val dataWithCopiedColumns = entity.wrappedEntity.baseEntity match {
       case Some(base) =>
-        copySlotContents(entity.wrappedEntity.v, base, clone = false, MemRecords(newDataWith, header)).data
-      case None => newDataWith
+        copySlotContents(entity.wrappedEntity.v, base, clone = false, MemRecords(newDataWithEssentialColumns, header)).data
+      case None => newDataWithEssentialColumns
     }
 
-    MemRecords(dataWithCopy, header)
+    MemRecords(dataWithCopiedColumns, header)
   }
 
   //project entity specific columns (essential for entity) to table todo: better methodName?
