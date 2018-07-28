@@ -147,7 +147,7 @@ object CypherMapOps {
       }
     }
 
-    private def nestNode(row: CypherMap, field: Var, header: RecordHeader): CypherValue = {
+    def nestNode(row: CypherMap, field: Var, header: RecordHeader): CypherValue = {
       val idValue = row(header.slotFor(field).columnName)
       val columnName = header.slotFor(field).columnName
       idValue match {
@@ -174,7 +174,7 @@ object CypherMapOps {
       }
     }
 
-    private def nestRel(row: CypherMap, field: Var, header: RecordHeader): CypherValue = {
+    def nestRel(row: CypherMap, field: Var, header: RecordHeader): CypherValue = {
       val idValue = row(header.slotFor(field).columnName)
       idValue match {
         case id: CypherInteger =>

@@ -124,7 +124,7 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
   override def planConstructGraph(
     table: MemOperator,
     onGraph: MemOperator,
-    construct: LogicalPatternGraph): MemOperator = ConstructGraph(table,onGraph,construct)
+    construct: LogicalPatternGraph): MemOperator = ConstructGraphWithJoin(table,onGraph,construct)
 
   override def planEmptyRecords(
     in: MemOperator,

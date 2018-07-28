@@ -16,21 +16,23 @@ package org.opencypher.memcypher.apps
 import com.typesafe.scalalogging.Logger
 import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession}
+import org.opencypher.memcypher.impl.table.RecordHeaderUtils
 import org.opencypher.okapi.api.configuration.Configuration.PrintTimings
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
+import org.opencypher.okapi.ir.api.Label
+import org.opencypher.okapi.ir.api.configuration.IrConfiguration.PrintIr
+import org.opencypher.okapi.ir.api.expr.{HasLabel, Var}
 import org.opencypher.okapi.relational.api.configuration.CoraConfiguration.{PrintFlatPlan, PrintPhysicalPlan}
 
 object Demo extends App {
-
   val logger = Logger("Demo")
 
   PrintTimings.set()
   PrintFlatPlan.set()
   PrintPhysicalPlan.set()
-
   val query =
-    s"""|Match (n:Tag)--(m:Person)
-        |Construct New(copiedNode Copy of n)  New(ungroupedNode:wow{age:"test"}) New(propertygroupedNode:wow{age:"test",groupby:['m.gender']})
+    s"""|MATCH (p1:Person)--(p2:Person)
+        |CONSTRUCT New (x {what:"test"})-[:filler]->({groupby:1})
         |RETURN GRAPH""".stripMargin
 
   logger.info(s"Executing query: $query")
@@ -38,8 +40,11 @@ object Demo extends App {
   implicit val memCypher: MemCypherSession = MemCypherSession.create
 
   val graph = MemCypherGraph.create(DemoData.nodes, DemoData.rels)
+  val result = graph.cypher(query)
+  val newGraph = result.getGraph
+  newGraph.nodes("n").show
+  newGraph.relationships("r").show
 
-  graph.cypher(query).show
 }
 
 object DemoData {
@@ -55,45 +60,43 @@ object DemoData {
   val n0 = MemNode(0L, Set("Person", "Moderator"), CypherMap(
     "name" -> "Alice",
     "gender" -> "f",
-    "city" -> "Leipzig",
-    "age" -> 20
+    "city" -> "Leipzig"
+
   ))
 
   val n1 = MemNode(1L, Set("Person"), CypherMap(
     "name" -> "Bob",
     "gender" -> "m",
-    "city" -> "Leipzig",
-    "age" -> 30
+    "city" -> "Leipzig"
+
   ))
 
   val n2 = MemNode(2L, Set("Person"), CypherMap(
     "name" -> "Carol",
     "gender" -> "f",
-    "city" -> "Dresden",
-    "age" -> 30
+    "city" -> "Dresden"
+
   ))
 
   val n3 = MemNode(3L, Set("Person", "Moderator"), CypherMap(
     "name" -> "Dave",
     "gender" -> "m",
     "city" -> "Dresden",
-    "age" -> 40
+  "age" -> 35
   ))
 
   val n4 = MemNode(4L, Set("Person"), CypherMap(
     "name" -> "Eve",
     "gender" -> "f",
-    "city" -> "Dresden",
-    "speaks" -> "English",
-    "age" -> 35
+    "speaks" -> "English"
+
   ))
 
   val n5 = MemNode(5L, Set("Person"), CypherMap(
     "name" -> "Frank",
     "gender" -> "m",
     "city" -> "Berlin",
-    "LocIP" -> "127.0.0.1",
-    "age" -> 42
+    "LocIP" -> "127.0.0.1"
   ))
 
   val n6 = MemNode(6L, Set("Tag"), CypherMap(
