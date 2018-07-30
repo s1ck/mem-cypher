@@ -13,6 +13,7 @@
  */
 package org.opencypher.memcypher.impl.planning
 
+import org.neo4j.cypher.internal.frontend.v3_4.ast.ConstructGraph
 import org.opencypher.memcypher.api.{MemCypherGraph, MemCypherSession, MemRecords}
 import org.opencypher.memcypher.impl.MemRuntimeContext
 import org.opencypher.okapi.api.graph.QualifiedGraphName
@@ -124,7 +125,7 @@ class MemOperatorProducer(implicit memCypher: MemCypherSession)
   override def planConstructGraph(
     table: MemOperator,
     onGraph: MemOperator,
-    construct: LogicalPatternGraph): MemOperator = ConstructGraphWithOutJoin(table,onGraph,construct) //use ConstructGraphTable,ConstructGraphWithJoin or ConstructGraphWithOutJoin
+    construct: LogicalPatternGraph): MemOperator = ConstructGraphTable(table,onGraph,construct) //use ConstructGraphTable,ConstructGraphWithJoin or ConstructGraphWithOutJoin
 
   override def planEmptyRecords(
     in: MemOperator,
