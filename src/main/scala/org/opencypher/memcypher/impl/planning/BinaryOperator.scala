@@ -24,6 +24,7 @@ import org.opencypher.okapi.api.schema.Schema
 import org.opencypher.okapi.api.types._
 import org.opencypher.okapi.api.value.CypherValue.{CypherBoolean, CypherInteger, CypherList, CypherMap, CypherString}
 import org.opencypher.okapi.impl.exception.{IllegalArgumentException, NotImplementedException}
+import org.opencypher.okapi.impl.util.Measurement
 import org.opencypher.okapi.ir.api.expr._
 import org.opencypher.okapi.ir.api.set.SetPropertyItem
 import org.opencypher.okapi.ir.api.{Label, PropertyKey}
@@ -173,10 +174,9 @@ final case class ConstructGraphWithOutJoin(left: MemOperator, right: MemOperator
     var entityTable: Embeddings = Embeddings.empty
     val extendedMatchTableData = matchTable.data.project(idExpr, nodeEntity.wrappedEntity.v.name)
     val neededColumns: Set[Expr] = nodeEntity.wrappedEntity.baseEntity match {
-      case Some(base) => {
+      case Some(base) =>
         val baseEntityExprs = RecordHeader.nodeFromSchema(base, schema).contents.map(_.key)
         Set(Id(nodeEntity.wrappedEntity.v)()) ++ baseEntityExprs
-      }
       case None => Set(Id(nodeEntity.wrappedEntity.v)())
     }
     if (nodeEntity.aggregatedProperties.nonEmpty) {
@@ -186,13 +186,13 @@ final case class ConstructGraphWithOutJoin(left: MemOperator, right: MemOperator
       entityTable = extendedMatchTableData.group(neededColumns, aggregations).withColumnsRenamed(renamedIdColumn) //just group after new id
     }
     else {
-      val neededColumnNames: Set[String] = neededColumns.foldLeft(Set.empty[String])((set, expr) =>
+      val neededColumnNames: Set[String] = neededColumns.foldLeft(Set.empty[String]) { (set, expr) =>
         expr match {
           case Id(inner) => set + RichExpression(inner).columnName
           case other => set + RichExpression(other).columnName
         }
-      )
-      entityTable = extendedMatchTableData.distinct(neededColumnNames)
+      }
+      entityTable = Measurement.time("distinct op"){extendedMatchTableData.distinct(neededColumnNames)}
     }
 
     val entityDataWithEssentialColumns = constructGraphHelper.projectConstructedEntity(nodeEntity.wrappedEntity, entityTable)(context, header)
@@ -200,11 +200,11 @@ final case class ConstructGraphWithOutJoin(left: MemOperator, right: MemOperator
 
     val entityDataWithCopiedColumns = nodeEntity.wrappedEntity.baseEntity match {
       case Some(base) =>
-        constructGraphHelper.copySlotContents(nodeEntity.wrappedEntity.v, base, clone = false, MemRecords(entityWithProperties, header), true).data
+        constructGraphHelper.copySlotContents(nodeEntity.wrappedEntity.v, base, clone = false, MemRecords(entityWithProperties, header), renamings = true).data
       case None => entityWithProperties
     }
 
-    val nodes = entityDataWithCopiedColumns.data.map(row => RichCypherMap(row).nestNode(row, nodeEntity.wrappedEntity.v, nodeHeader).cast[MemNode])
+    val nodes = Measurement.time("nestNode"){entityDataWithCopiedColumns.data.map(row => RichCypherMap(row).nestNode(row, nodeEntity.wrappedEntity.v, nodeHeader).cast[MemNode])}
     nodes -> MemRecords(extendedMatchTableData, header)
   }
 }
@@ -273,17 +273,17 @@ final case class ConstructGraphWithJoin(left: MemOperator, right: MemOperator, c
     val idExpr = Id(ListLit(StringLit(nodeEntity.wrappedEntity.v.name)() +: nodeEntity.groupBy.toIndexedSeq)())()
     var entityTable: Embeddings = Embeddings.empty
     var extendedMatchTableData: Embeddings = Embeddings.empty
-    val neededColumns: Set[Expr] = nodeEntity.wrappedEntity.baseEntity match {
-      case Some(base) => {
-        val baseEntityExprs = RecordHeader.nodeFromSchema(base, schema).contents.map(_.key)
-        Set(Id(nodeEntity.wrappedEntity.v)()) ++ baseEntityExprs
-      }
-      case None => Set(Id(nodeEntity.wrappedEntity.v)())
-    }
+
     if (nodeEntity.aggregatedProperties.nonEmpty) {
+      val neededColumns: Set[Expr] = nodeEntity.wrappedEntity.baseEntity match {
+        case Some(base) =>
+          val baseEntityExprs = RecordHeader.nodeFromSchema(base, schema).contents.map(_.key)
+          nodeEntity.groupBy ++ baseEntityExprs
+        case None => nodeEntity.groupBy
+      }
       //workaround with renamings of Var-name in idExpr, because group-op alters column names from f.i. a to id(a)
       // renaming columns into f.i. a from id(a) would be too expensive here
-      val renamedExpr = nodeEntity.groupBy.map {
+      val renamedExpr = neededColumns.map {
         case expr@Id(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
         case expr@Labels(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
         case x => x
@@ -294,20 +294,26 @@ final case class ConstructGraphWithJoin(left: MemOperator, right: MemOperator, c
       val aggregations = nodeEntity.aggregatedProperties.foldLeft(Set[(Var, Aggregator)]())((list, setItem) =>
         list + (Var(RichExpression(Property(Var(setItem.variable.name)(), PropertyKey(setItem.propertyKey))(CTString)).columnName)() -> setItem.setValue)) //:STRING because header expects string
 
-      entityTable = matchTable.data.group(nodeEntity.groupBy, aggregations)
+      entityTable = matchTable.data.group(neededColumns, aggregations)
       entityTable = entityTable.project(idExpr, nodeEntity.wrappedEntity.v.name)
       extendedMatchTableData = matchTable.data.innerJoin(entityTable.drop(aggregatedColumns), ListLit(nodeEntity.groupBy.toIndexedSeq)(), ListLit(renamedExpr.toIndexedSeq)())
     }
     else {
+      val neededColumns: Set[Expr] = nodeEntity.wrappedEntity.baseEntity match {
+        case Some(base) =>
+          val baseEntityExprs = RecordHeader.nodeFromSchema(base, schema).contents.map(_.key)
+          baseEntityExprs ++ nodeEntity.wrappedEntity.v
+        case None => Set(nodeEntity.wrappedEntity.v)
+      }
       val neededColumnNames: Set[String] = neededColumns.foldLeft(Set.empty[String])((set, expr) =>
         expr match {
           case Id(inner) => set + RichExpression(inner).columnName
           case other => set + RichExpression(other).columnName
         }
       )
-      extendedMatchTableData = matchTable.data.project(idExpr, nodeEntity.wrappedEntity.v.name)
       //select only important columns here (has to consider baseEntity for this)
-      entityTable = extendedMatchTableData.distinct(neededColumnNames)
+      extendedMatchTableData = matchTable.data.project(idExpr, nodeEntity.wrappedEntity.v.name)
+      entityTable = Measurement.time("distinct op"){extendedMatchTableData.distinct(neededColumnNames)}
     }
     val entityDataWithEssentialColumns = constructGraphHelper.projectConstructedEntity(nodeEntity.wrappedEntity, entityTable)(context, header)
     val entityWithProperties = propertySets.foldLeft(entityDataWithEssentialColumns) { (newData, setItem) => newData.project(setItem.setValue, RichExpression(Property(Var(setItem.variable.name)(), PropertyKey(setItem.propertyKey))(setItem.setValue.cypherType)).columnName) }
@@ -319,7 +325,7 @@ final case class ConstructGraphWithJoin(left: MemOperator, right: MemOperator, c
       case None => entityWithProperties
     }
 
-    val nodes = entityDataWithCopiedColumns.data.map(row => RichCypherMap(row).nestNode(row, nodeEntity.wrappedEntity.v, nodeHeader).cast[MemNode])
+    val nodes =Measurement.time("nestNode"){entityDataWithCopiedColumns.data.map(row => RichCypherMap(row).nestNode(row, nodeEntity.wrappedEntity.v, nodeHeader).cast[MemNode])}
     nodes -> MemRecords(extendedMatchTableData, header)
   }
 }
@@ -425,7 +431,7 @@ final case class ConstructGraphTable(left: MemOperator, right: MemOperator, cons
 
     val dataWithCopiedColumns = entity.wrappedEntity.baseEntity match {
       case Some(base) =>
-        constructGraphHelper.copySlotContents(entity.wrappedEntity.v, base, clone = false, MemRecords(newDataWithEssentialColumns, header), false).data
+        constructGraphHelper.copySlotContents(entity.wrappedEntity.v, base, clone = false, MemRecords(newDataWithEssentialColumns, header), renamings = false).data
       case None => newDataWithEssentialColumns
     }
 
@@ -456,10 +462,9 @@ object constructGraphHelper {
     val idExpr = Id(ListLit(StringLit(entity.wrappedEntity.v.name)() +: entity.groupBy.toIndexedSeq)())()
     var edgeTable: Embeddings = Embeddings.empty
     val neededColumns: Set[Expr] = entity.wrappedEntity.baseEntity match {
-      case Some(base) => {
+      case Some(base) =>
         val baseEntityExprs = RecordHeader.relationshipFromSchema(base, schema).contents.map(_.key)
         entity.groupBy ++ baseEntityExprs
-      }
       case None => entity.groupBy
     }
     if (entity.aggregatedProperties.nonEmpty) {
