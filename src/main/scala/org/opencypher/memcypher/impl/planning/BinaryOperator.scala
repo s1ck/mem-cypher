@@ -283,7 +283,7 @@ final case class ConstructGraphWithJoin(left: MemOperator, right: MemOperator, c
       }
       //workaround with renamings of Var-name in idExpr, because group-op alters column names from f.i. a to id(a)
       // renaming columns into f.i. a from id(a) would be too expensive here
-      val renamedExpr = neededColumns.map {
+      val renamedExpr = nodeEntity.groupBy.map {
         case expr@Id(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
         case expr@Labels(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
         case x => x
