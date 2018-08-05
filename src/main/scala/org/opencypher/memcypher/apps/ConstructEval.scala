@@ -43,7 +43,7 @@ object ConstructEval extends App {
     }
   }
 
-  def regardingOutputCardinality(outputCardinality: List[Any], graph: MemCypherGraph) = {
+  def regardingOutputCardinality(outputCardinality: List[Any],aggregatedProperty:Boolean, graph: MemCypherGraph) = {
     val matchPattern = "MATCH (b) "
     val returnPattern = "Return Graph"
     val graphsize = graph.nodes.length
@@ -54,26 +54,26 @@ object ConstructEval extends App {
           case l: List[Any] => "[" + l.map(s => "\"" + s + "\"").mkString(",").concat("]")
           case x => x.toString
         }
-        val constructPattern = s"Construct New ({groupby:$string})"
+        val constructPattern = if(aggregatedProperty) s"""Construct New ({groupby:$string,what:"max(b)"})""" else s"Construct New ({groupby:$string})"
         val query = matchPattern + constructPattern + returnPattern
         logger.info(query + s" on $graphsize matches")
         val result = graph.cypher(query)
-        logger.info("record size " + ObjectSizeCalculator.getObjectSize(result.getRecords.collect) + " bytes")
-        logger.info("graph size with " + result.getGraph.nodes("n").size + " nodes " + ObjectSizeCalculator.getObjectSize(result.getGraph) + " bytes")
+        //logger.info("record size " + ObjectSizeCalculator.getObjectSize(result.getRecords.collect) + " bytes")
+        //logger.info("graph size with " + result.getGraph.nodes("n").size + " nodes " + ObjectSizeCalculator.getObjectSize(result.getGraph) + " bytes")
       }
     )
   }
 
-  def regardingAggregatedProperties(aggregator: String, maxNumber: Int, graph: MemCypherGraph) = {
+  def regardingProperties(expr: String, maxNumber: Int, graph: MemCypherGraph) = {
     val matchPattern = "MATCH (b) "
     val returnPattern = "Return Graph"
     var properties = ""
     val graphsize = graph.nodes.length
     for (x <- 1 to maxNumber) {
-      properties += s"""aggr$x :"$aggregator","""
+      properties += s"""aggr$x :"$expr","""
       val constructPattern = s"Construct New ({groupby:1,${properties.substring(0, properties.length - 1)}})"
       val query = matchPattern + constructPattern + returnPattern
-      logger.info(s"$x aggregated properties on $graphsize matches")
+      logger.info(s"$x properties with expr: $expr on $graphsize matches")
       val result = graph.cypher(query)
       //logger.info("record size " + ObjectSizeCalculator.getObjectSize(result.getRecords.collect) + " bytes")
       //logger.info("graph size with "+result.getGraph.nodes("n").size+" nodes " + ObjectSizeCalculator.getObjectSize(result.getGraph) + " bytes")
@@ -84,13 +84,13 @@ object ConstructEval extends App {
     val matchPattern = "MATCH (x) "
     val returnPattern = "Return Graph"
     var nodes = ""
-    val node:String = {if(aggregated) s"""({groupby:"x.ten",what:"avg(x)"}),""" else s"""(),"""}
+    val node:String = {if(aggregated) s"""({groupby:"x.ten",what:"max(x)"}),""" else s"""(),"""}
     val graphsize = graph.nodes.length
     for (x: Int <- 1 to maxNumber) {
       nodes += node
       val constructPattern = s"Construct New ${nodes.substring(0, nodes.length - 1)}"
       val query = matchPattern + constructPattern + returnPattern
-      logger.info(s"$x nodes on $graphsize matches")
+      logger.info(s"$x nodes ($node) on $graphsize matches")
       val result = graph.cypher(query)
       //logger.info("record size " + ObjectSizeCalculator.getObjectSize(result.getRecords.collect) + " bytes")
       //logger.info("graph size with " + result.getGraph.nodes("n").size + " nodes " + ObjectSizeCalculator.getObjectSize(result.getGraph) + " bytes")
@@ -102,7 +102,7 @@ object ConstructEval extends App {
     val matchPattern = "MATCH (x) "
     val returnPattern = "Return Graph"
     var edges = ""
-    val edge = {if(aggregated) s"""(a)-[:filler]->(b),""" else s"""(a)-[:filler{groupby:"b.ten",what:"avg(x)"]]->(b),"""}
+    val edge = {if(aggregated) s"""(a)-[:filler{groupby:"b.ten",what:"max(x)"]]->(b),""" else s"""(a)-[:filler]->(b),"""}
     val graphsize = graph.nodes.length
     for (x <- 1 to maxNumber) {
       edges += edge
@@ -133,25 +133,26 @@ object ConstructEval extends App {
 
 
   for (x <- 1 to 10) {
-    PrintTimings.set()
+    //PrintTimings.set()
     implicit val memCypher: MemCypherSession = MemCypherSession.create
     val warmupGraph = getData(100)
     val realGraph = getData(100000)
     //regardingInputCardinality(100,20) //warmup
     //regardingInputCardinality(50000, 10)
-    //regardingOutputCardinality(List(1, "b.two", "b.five", "b.ten", "b.twenty", "b.fifty", "b.hundred", "b"), warmupGraph) //warmup
-    //regardingOutputCardinality(List(List("b.two", "b.five"), List("b.two", "b.ten"), List("b.two", "b", "b.five", "b.ten")), warmupGraph) //warmup
-    //regardingOutputCardinality(List(1, "b.two", "b.five", "b.ten", "b.twenty", "b.fifty", "b.hundred"), realGraph)
-    //regardingOutputCardinality(List(List("b.two", "b.hundred"), List("b.five", "b.hundred"), List("b.ten", "b.hundred"), List("b.twenty", "b.hundred"), List("b.fifty", "b.hundred"), List("b.ten", "b.twenty", "b.hundred"), List("b.ten", "b.fifty", "b.hundred"), List("b"), List()), realGraph) //todo more Lists
+    //regardingOutputCardinality(List(1, "b.two", "b.five", "b.ten", "b.twenty", "b.fifty", "b.hundred", "b"),true, warmupGraph) //warmup
+    //regardingOutputCardinality(List(List("b.two", "b.five"), List("b.two", "b.ten"), List("b.two", "b", "b.five", "b.ten")),true, warmupGraph) //warmup
+    //regardingOutputCardinality(List(1, "b.two", "b.five", "b.ten", "b.twenty", "b.fifty", "b.hundred"),true, realGraph)
+    //regardingOutputCardinality(List(List("b.two", "b.hundred"), List("b.five", "b.hundred"), List("b.ten", "b.hundred"), List("b.twenty", "b.hundred"), List("b.fifty", "b.hundred"), List("b.ten", "b.twenty", "b.hundred"), List("b.ten", "b.fifty", "b.hundred"), List("b"), List()),true, realGraph) //todo more Lists
   //todo test copy
-  //regardingAggregatedProperties("avg(b)",10,warmupGraph) //warmup
-  //regardingAggregatedProperties("avg(b)",20,realGraph)
-  //regardingNodeNumber(10,warmupGraph,true)
-  //regardingNodeNumber(10,realGraph,true)//}
+    // todo redo edges and nodes with aggregaed properties
+    //regardingProperties("max(b)",10,warmupGraph) //warmup
+  //regardingProperties("max(b)",20,realGraph)
+  regardingNodeNumber(10,warmupGraph,true)
+  regardingNodeNumber(10,realGraph,true)//}
   //regardingEdgeNumber(10,warmupGraph,true)
   //regardingEdgeNumber(10,realGraph,true)
-  motivetheory(warmupGraph)
-  motivetheory(realGraph)
+  //motivetheory(warmupGraph)
+  //motivetheory(realGraph)
 }
 }
 
