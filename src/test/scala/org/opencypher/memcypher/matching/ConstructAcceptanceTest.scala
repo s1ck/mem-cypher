@@ -18,9 +18,10 @@ import org.opencypher.memcypher.api.value.{MemNode, MemRelationship}
 import org.opencypher.okapi.api.value.CypherValue.CypherMap
 
 class ConstructAcceptanceTest extends MemCypherTestSuite {
-
+  /**
+    * test for constructGraphTable ... check in MemOperatorProducer if tests fail!
+    */
   describe("node-constructs") {
-    //todo: test aggregated over properties with cypher type like StringOrNull
     it("without unnamed construct-variable") {
       val graph = initGraph("CREATE (:Person), (:Car)")
       val result = graph.cypher("CONSTRUCT NEW() RETURN GRAPH")
@@ -150,6 +151,15 @@ class ConstructAcceptanceTest extends MemCypherTestSuite {
       val result = graph.cypher("""MATCH (n) CONSTRUCT NEW(x{groupby:1,max_age:"max(n.age)"}) RETURN GRAPH""")
 
       result.getRecords.collect should contain (CypherMap("x" -> MemNode(0, Set.empty, CypherMap("max_age" -> 14)))) //3x the same MemNode returned here (no distinct over cyphermaps)
+      /*result.getGraph.nodes("n").collect should contain(CypherMap("n" -> MemNode(1, Set.empty, CypherMap("max_age" -> 14))))*/
+    }
+
+    it("with aggregated properties (property is partly null)") {
+      val graph = initGraph("CREATE ({name:'tom',age:10}),({name:'tom'}),({age:14})")
+      val result = graph.cypher("""MATCH (n) CONSTRUCT NEW(x{groupby:"n.name",max_age:"max(n.age)"}) RETURN GRAPH""")
+
+      result.getRecords.collect should contain (CypherMap("x" -> MemNode(0, Set.empty, CypherMap("max_age" -> 14))))
+      result.getRecords.collect should contain (CypherMap("x" -> MemNode(1, Set.empty, CypherMap("max_age" -> 10))))
       /*result.getGraph.nodes("n").collect should contain(CypherMap("n" -> MemNode(1, Set.empty, CypherMap("max_age" -> 14))))*/
     }
 

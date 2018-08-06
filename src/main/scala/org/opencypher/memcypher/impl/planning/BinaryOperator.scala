@@ -283,10 +283,12 @@ final case class ConstructGraphWithJoin(left: MemOperator, right: MemOperator, c
       }
       //workaround with renamings of Var-name in idExpr, because group-op alters column names from f.i. a to id(a)
       // renaming columns into f.i. a from id(a) would be too expensive here
-      val renamedExpr = nodeEntity.groupBy.map {
-        case expr@Id(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
-        case expr@Labels(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
-        case x => x
+      val renamedColumns = nodeEntity.groupBy.foldLeft(Map.empty[String,String]) { (renamings,expr) =>
+        expr match {
+          case expr@Id(inner) => renamings + (expr.columnName -> inner.columnName)
+          //case expr@Labels(Var(_) =>  todo:check if labels still work
+          case x => renamings
+        }
       }
       val aggregatedColumns = nodeEntity.aggregatedProperties.foldLeft(Set.empty[String]) { (columnNames, setItem) =>
         columnNames + RichExpression(Property(Var(setItem.variable.name)(), PropertyKey(setItem.propertyKey))(CTString)).columnName
@@ -295,8 +297,9 @@ final case class ConstructGraphWithJoin(left: MemOperator, right: MemOperator, c
         list + (Var(RichExpression(Property(Var(setItem.variable.name)(), PropertyKey(setItem.propertyKey))(CTString)).columnName)() -> setItem.setValue)) //:STRING because header expects string
 
       entityTable = matchTable.data.group(neededColumns, aggregations)
-      entityTable = entityTable.project(idExpr, nodeEntity.wrappedEntity.v.name)
-      extendedMatchTableData = matchTable.data.innerJoin(entityTable.drop(aggregatedColumns), ListLit(nodeEntity.groupBy.toIndexedSeq)(), ListLit(renamedExpr.toIndexedSeq)())
+      entityTable = entityTable.withColumnsRenamed(renamedColumns)
+      entityTable = entityTable.project(idExpr, nodeEntity.wrappedEntity.v.name) //!needs columnnames before group to return right id
+      extendedMatchTableData = matchTable.data.innerJoin(entityTable.drop(aggregatedColumns), ListLit(nodeEntity.groupBy.toIndexedSeq)(), ListLit(nodeEntity.groupBy.toIndexedSeq)())
     }
     else {
       val neededColumns: Set[Expr] = nodeEntity.wrappedEntity.baseEntity match {
@@ -320,7 +323,6 @@ final case class ConstructGraphWithJoin(left: MemOperator, right: MemOperator, c
 
     val entityDataWithCopiedColumns = nodeEntity.wrappedEntity.baseEntity match {
       case Some(base) =>
-        //here copy of columns but could also rename columns instead
         constructGraphHelper.copySlotContents(nodeEntity.wrappedEntity.v, base, clone = false, MemRecords(entityWithProperties, header), true).data
       case None => entityWithProperties
     }
@@ -469,14 +471,16 @@ object constructGraphHelper {
     }
     if (entity.aggregatedProperties.nonEmpty) {
       //workaround with renamings of Var-name in idExpr, because group-op alters column names from f.i. a to id(a)
-      val renamedExpr = entity.groupBy.map {
-        case expr@Id(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
-        case expr@Labels(Var(_)) => Id(Var(RichExpression(expr).columnName)())()
-        case x => x
+      val renamedColumns = entity.groupBy.foldLeft(Map.empty[String,String]) { (renamings,expr) =>
+        expr match {
+          case expr@Id(inner) => renamings.+(expr.columnName -> inner.columnName)
+          case x => renamings
+        }
       }
       val aggregations = entity.aggregatedProperties.foldLeft(List[(Var, Aggregator)]())((list, setItem) =>
         list :+ (Var(RichExpression(Property(Var(setItem.variable.name)(), PropertyKey(setItem.propertyKey))(CTString)).columnName)() -> setItem.setValue)) //:STRING because header expects string
       edgeTable = matchTable.data.group(neededColumns, aggregations.toSet)
+      edgeTable = edgeTable.withColumnsRenamed(renamedColumns) //Renamings here so project new id can work
       edgeTable = edgeTable.project(idExpr, entity.wrappedEntity.v.name)
     }
     else {
@@ -491,7 +495,7 @@ object constructGraphHelper {
     }
     val entityDataWithEssentialColumns = {
       val renamings = Map(entity.wrappedEntity.source.columnName -> StartNode(entity.wrappedEntity.v)().columnName,
-        entity.wrappedEntity.target.columnName -> EndNode(entity.wrappedEntity.v)().columnName)
+        entity.wrappedEntity.target.columnName -> EndNode(entity.wrappedEntity.v)().columnName) //source and target node columns now renamed 2 times, when aggregated prop. exists
       val edgeTableWithNodes = edgeTable.withColumnsRenamed(renamings)
       entity.wrappedEntity.typ match {
         case Some(typ) => edgeTableWithNodes.project(StringLit(typ)(), Type(entity.wrappedEntity.v)().columnName)
